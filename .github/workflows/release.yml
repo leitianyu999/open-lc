@@ -83,6 +83,9 @@ jobs:
         run: bun run build:agent-web
       - name: Build desktop
         run: bun run --cwd agent/electrobun build --env=stable
+      - name: Repack macOS DMG
+        if: startsWith(matrix.target, 'macos-')
+        run: bun run scripts/repack-open-lc-macos-dmg.js "${{ matrix.target }}" "${{ matrix.asset }}"
       - name: Verify desktop artifact
         shell: pwsh
         run: |
