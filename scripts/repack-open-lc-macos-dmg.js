@@ -69,26 +69,28 @@ const buildDir = candidateBuildDirs.find((dir) => existsSync(dir)) ?? candidateB
 const artifactsDir = join(repoRoot, 'agent', 'electrobun', 'artifacts')
 const artifactPath = join(artifactsDir, assetName)
 const tarPath = findFirst(buildDir, (path, entry) => entry.isFile() && path.endsWith('.app.tar.zst'))
-
-if (!tarPath) {
-  console.error(`No .app.tar.zst found under ${buildDir}`)
-  process.exit(1)
-}
+const directAppPath = tarPath
+  ? null
+  : findFirst(buildDir, (path, entry) => entry.isDirectory() && path.endsWith('.app'))
 
 const workDir = join(buildDir, '.release-dmg')
 const extractedDir = join(workDir, 'extracted')
 const stagingDir = join(workDir, 'staging')
 
 rmSync(workDir, { recursive: true, force: true })
-mkdirSync(extractedDir, { recursive: true })
 mkdirSync(stagingDir, { recursive: true })
 mkdirSync(artifactsDir, { recursive: true })
 
-run('tar', ['--extract', '--file', tarPath, '--directory', extractedDir])
+let appPath = directAppPath
 
-const appPath = findFirst(extractedDir, (path, entry) => entry.isDirectory() && path.endsWith('.app'))
+if (tarPath) {
+  mkdirSync(extractedDir, { recursive: true })
+  run('tar', ['--extract', '--file', tarPath, '--directory', extractedDir])
+  appPath = findFirst(extractedDir, (path, entry) => entry.isDirectory() && path.endsWith('.app'))
+}
+
 if (!appPath) {
-  console.error(`No .app bundle found in ${tarPath}`)
+  console.error(`No .app bundle or .app.tar.zst found under ${buildDir}`)
   process.exit(1)
 }
 
