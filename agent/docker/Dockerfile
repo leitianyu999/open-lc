@@ -13,6 +13,8 @@ COPY agent/web agent/web
 COPY agent/electrobun agent/electrobun
 COPY agent/drizzle agent/drizzle
 COPY agent/drizzle.config.ts agent/drizzle.config.ts
+COPY scripts/worker.js scripts/worker.js
+COPY scripts/encrypt-url.js scripts/encrypt-url.js
 RUN bun run build:agent-web
 
 FROM oven/bun:1.3.13-slim AS runtime
