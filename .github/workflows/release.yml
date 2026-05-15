@@ -11,7 +11,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   validate:
@@ -19,6 +18,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      image_name: ${{ steps.version.outputs.image_name }}
     steps:
       - name: Validate tag
         id: version
@@ -31,6 +31,8 @@ jobs:
           fi
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+          image_name="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "image_name=${image_name}" >> "${GITHUB_OUTPUT}"
 
   typecheck:
     needs: validate
@@ -120,9 +122,9 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ needs.validate.outputs.image_name }}:${{ needs.validate.outputs.version }}
+            ${{ env.REGISTRY }}/${{ needs.validate.outputs.image_name }}:${{ needs.validate.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ needs.validate.outputs.image_name }}:latest
 
   release:
     needs:
@@ -140,6 +142,7 @@ jobs:
         shell: bash
         env:
           REPO: ${{ github.repository }}
+          IMAGE_NAME: ${{ needs.validate.outputs.image_name }}
           TAG: ${{ needs.validate.outputs.tag }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
@@ -151,7 +154,7 @@ jobs:
           macos_x64_url="https://github.com/${REPO}/releases/download/${TAG}/${macos_x64_asset}"
           win_x64_url="https://github.com/${REPO}/releases/download/${TAG}/${win_x64_asset}"
           linux_x64_url="https://github.com/${REPO}/releases/download/${TAG}/${linux_x64_asset}"
-          docker_image_version="ghcr.io/${REPO}:${VERSION}"
+          docker_image_version="ghcr.io/${IMAGE_NAME}:${VERSION}"
           sed \
             -e "s|{{MACOS_ARM64_URL}}|${macos_arm64_url}|g" \
             -e "s|{{MACOS_X64_URL}}|${macos_x64_url}|g" \
