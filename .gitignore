@@ -4,6 +4,7 @@ node_modules/
 # build outputs
 agent/web/dist/
 agent/electrobun/build/
+agent/electrobun/artifacts/
 
 # local runtime data
 data/
