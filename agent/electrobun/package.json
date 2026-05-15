@@ -1,0 +1,18 @@
+{
+  "name": "@lc-agent/electrobun",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electrobun dev",
+    "build": "electrobun build",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@lc-agent/api": "workspace:*",
+    "electrobun": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

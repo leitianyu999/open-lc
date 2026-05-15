@@ -1,0 +1,169 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Validate tag
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must be vX.Y.Z, got ${tag}" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+
+  typecheck:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Inject version
+        run: bun run scripts/inject-open-lc-version.js "${{ needs.validate.outputs.version }}"
+      - name: Typecheck
+        run: bun run typecheck
+
+  desktop:
+    needs:
+      - validate
+      - typecheck
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+            asset: stable-macos-arm64-LCAgent.dmg
+          - target: macos-x64
+            runner: macos-15-intel
+            asset: stable-macos-x64-LCAgent.dmg
+          - target: win-x64
+            runner: windows-2025
+            asset: stable-win-x64-LCAgent-Setup.zip
+          - target: linux-x64
+            runner: ubuntu-24.04
+            asset: stable-linux-x64-LCAgent-Setup.tar.gz
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Inject version
+        run: bun run scripts/inject-open-lc-version.js "${{ needs.validate.outputs.version }}"
+      - name: Build web
+        run: bun run build:agent-web
+      - name: Build desktop
+        run: bun run --cwd agent/electrobun build --env=stable
+      - name: Verify desktop artifact
+        shell: pwsh
+        run: |
+          $artifact = "agent/electrobun/artifacts/${{ matrix.asset }}"
+          if (-not (Test-Path $artifact)) {
+            Get-ChildItem -Path agent/electrobun/artifacts -Recurse
+            throw "Expected desktop artifact not found: $artifact"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-lc-desktop-${{ matrix.target }}-${{ needs.validate.outputs.version }}
+          path: agent/electrobun/artifacts/*
+          if-no-files-found: error
+
+  docker:
+    needs:
+      - validate
+      - typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Inject version
+        run: bun run scripts/inject-open-lc-version.js "${{ needs.validate.outputs.version }}"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: agent/docker/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  release:
+    needs:
+      - validate
+      - desktop
+      - docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Prepare release notes
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          macos_arm64_asset="stable-macos-arm64-LCAgent.dmg"
+          macos_x64_asset="stable-macos-x64-LCAgent.dmg"
+          win_x64_asset="stable-win-x64-LCAgent-Setup.zip"
+          linux_x64_asset="stable-linux-x64-LCAgent-Setup.tar.gz"
+          macos_arm64_url="https://github.com/${REPO}/releases/download/${TAG}/${macos_arm64_asset}"
+          macos_x64_url="https://github.com/${REPO}/releases/download/${TAG}/${macos_x64_asset}"
+          win_x64_url="https://github.com/${REPO}/releases/download/${TAG}/${win_x64_asset}"
+          linux_x64_url="https://github.com/${REPO}/releases/download/${TAG}/${linux_x64_asset}"
+          docker_image_version="ghcr.io/${REPO}:${VERSION}"
+          sed \
+            -e "s|{{MACOS_ARM64_URL}}|${macos_arm64_url}|g" \
+            -e "s|{{MACOS_X64_URL}}|${macos_x64_url}|g" \
+            -e "s|{{WIN_X64_URL}}|${win_x64_url}|g" \
+            -e "s|{{LINUX_X64_URL}}|${linux_x64_url}|g" \
+            -e "s|{{DOCKER_IMAGE_VERSION}}|${docker_image_version}|g" \
+            .github/release-notes.md > release-notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.validate.outputs.tag }}" \
+            --title "Open LC ${{ needs.validate.outputs.tag }}" \
+            --notes-file release-notes.md \
+            release-assets/*

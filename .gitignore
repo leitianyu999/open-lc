@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build outputs
+agent/web/dist/
+agent/electrobun/build/
+
+# local runtime data
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# local environment
+.env
+.env.*
+!.env.example
+
+# tooling
+*.tsbuildinfo
+.DS_Store

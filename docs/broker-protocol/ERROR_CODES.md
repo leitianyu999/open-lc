@@ -1,0 +1,77 @@
+# Error Codes
+
+Error responses should include:
+
+```json
+{
+  "code": "ERROR_CODE",
+  "message": "Human readable message"
+}
+```
+
+## Generic
+
+- `UNAUTHORIZED`
+- `FORBIDDEN`
+- `NOT_FOUND`
+- `VALIDATION_ERROR`
+- `INTERNAL_ERROR`
+
+## Agent Auth
+
+- `INVALID_AGENT_TOKEN`
+- `AGENT_DISABLED`
+- `AGENT_LIMIT_EXCEEDED`
+
+## Polling
+
+- `TOO_EARLY`
+
+Too early polling may return:
+
+```json
+{
+  "status": "too_early",
+  "next_poll_after": 3
+}
+```
+
+## Participation
+
+- `TASK_NOT_FOUND`
+- `TASK_NOT_APPLYING`
+- `TASK_APPLY_WINDOW_CLOSED`
+- `TASK_PARTICIPATION_FULL`
+- `ALREADY_PARTICIPATED`
+- `TASK_NOT_ELIGIBLE_FOR_AGENT`
+- `PARTICIPATION_NOT_FOUND`
+- `PARTICIPATION_NOT_OWNED_BY_AGENT`
+- `PARTICIPATION_NOT_ACTIVE`
+- `PARTICIPATION_ALREADY_SUBMITTED`
+- `PARTICIPATION_EXPIRED`
+- `PARSE_DEADLINE_EXCEEDED`
+
+## Submission
+
+- `INVALID_SUBMISSION_TYPE`
+- `INVALID_RESULT_URL`
+- `INVALID_FAILURE_CODE`
+- `TASK_ALREADY_COMPLETED`
+- `TASK_FAILED`
+
+## Agent Failure Codes
+
+Terminal failure codes:
+
+- `INVALID_SHARE_LINK`
+- `SHARE_EXPIRED`
+- `FILE_NOT_FOUND`
+- `PASSWORD_REQUIRED_OR_INVALID`
+
+Non-terminal failure codes:
+
+- `PROVIDER_QUOTA_EXCEEDED`
+- `PROVIDER_ACCOUNT_RISK`
+- `PARSE_FAILED`
+- `NETWORK_ERROR`
+- `UNKNOWN_ERROR`

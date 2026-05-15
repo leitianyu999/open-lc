@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./agent/api"
+    },
+    {
+      "path": "./agent/web"
+    },
+    {
+      "path": "./agent/electrobun"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "open-lc",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "agent/*"
+  ],
+  "scripts": {
+    "dev:agent-api": "LC_AGENT_PORT=3100 bun run --hot agent/api/src/index.ts",
+    "dev:agent-web": "bun run --cwd agent/web dev",
+    "dev:agent-desktop": "bun run build:agent-web && bun run --cwd agent/electrobun dev",
+    "build:agent-web": "bun run --cwd agent/web build",
+    "build:agent-desktop": "bun run build:agent-web && bun run --cwd agent/electrobun build",
+    "typecheck": "tsc --noEmit -p agent/api/tsconfig.json && tsc --noEmit -p agent/web/tsconfig.json && tsc --noEmit -p agent/electrobun/tsconfig.json",
+    "db:agent:generate": "drizzle-kit generate --config agent/drizzle.config.ts",
+    "db:agent:migrate": "LC_AGENT_DATABASE_URL=data/agent.sqlite bun run agent/api/src/db/migrate.ts",
+    "db:agent:studio": "drizzle-kit studio --config agent/drizzle.config.ts",
+    "db:agent:check": "drizzle-kit check --config agent/drizzle.config.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.9.3"
+  }
+}
