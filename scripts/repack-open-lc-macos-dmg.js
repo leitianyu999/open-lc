@@ -60,7 +60,12 @@ const copyRecursive = (from, to) => {
   }
 }
 
-const buildDir = join(repoRoot, 'agent', 'electrobun', 'build', target)
+const buildRoot = join(repoRoot, 'agent', 'electrobun', 'build')
+const candidateBuildDirs = [
+  join(buildRoot, `stable-${target}`),
+  join(buildRoot, target),
+]
+const buildDir = candidateBuildDirs.find((dir) => existsSync(dir)) ?? candidateBuildDirs[0]
 const artifactsDir = join(repoRoot, 'agent', 'electrobun', 'artifacts')
 const artifactPath = join(artifactsDir, assetName)
 const tarPath = findFirst(buildDir, (path, entry) => entry.isFile() && path.endsWith('.app.tar.zst'))
