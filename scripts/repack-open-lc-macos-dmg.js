@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 const repoRoot = resolve(import.meta.dir, '..')
@@ -33,31 +33,6 @@ const findFirst = (root, predicate) => {
     }
   }
   return null
-}
-
-const copyRecursive = (from, to) => {
-  const entries = readdirSync(from, { withFileTypes: true })
-  mkdirSync(to, { recursive: true })
-
-  for (const entry of entries) {
-    const source = join(from, entry.name)
-    const targetPath = join(to, entry.name)
-
-    if (entry.isSymbolicLink()) {
-      symlinkSync(readlinkSync(source), targetPath)
-      continue
-    }
-
-    if (entry.isDirectory()) {
-      copyRecursive(source, targetPath)
-      continue
-    }
-
-    if (entry.isFile()) {
-      mkdirSync(dirname(targetPath), { recursive: true })
-      copyFileSync(source, targetPath)
-    }
-  }
 }
 
 const buildRoot = join(repoRoot, 'agent', 'electrobun', 'build')
@@ -95,7 +70,9 @@ if (!appPath) {
 }
 
 const stagedAppPath = join(stagingDir, basename(appPath))
-copyRecursive(appPath, stagedAppPath)
+run('ditto', [appPath, stagedAppPath])
+run('codesign', ['--force', '--deep', '--sign', '-', stagedAppPath])
+run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', stagedAppPath])
 symlinkSync('/Applications', join(stagingDir, 'Applications'))
 
 rmSync(artifactPath, { force: true })
@@ -106,8 +83,10 @@ run('hdiutil', [
   '-srcfolder',
   stagingDir,
   '-ov',
+  '-fs',
+  'HFS+',
   '-format',
-  'ULFO',
+  'UDZO',
   artifactPath,
 ])
 run('hdiutil', ['verify', artifactPath])
