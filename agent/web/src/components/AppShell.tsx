@@ -8,6 +8,8 @@ import { agentVersion } from '../version'
 import { NotificationCenter } from './Common'
 import { Button, InlineAlert, Input } from './ui'
 
+const appIconSrc = '/icon.png'
+
 const navItems = [
   { to: '/', label: '工作台', icon: LayoutDashboard },
   { to: '/accounts', label: '账号', icon: Database },
@@ -102,9 +104,7 @@ export function AppShell() {
       <header className="shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3 max-md:px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
-              <Bot className="size-5" />
-            </div>
+            <img className="size-10 shrink-0 rounded-lg object-cover shadow-sm ring-1 ring-slate-200" src={appIconSrc} alt="" />
             <div className="min-w-0">
               <div className="truncate text-lg font-bold">LC Agent</div>
               <div className="text-xs font-medium text-slate-500">v{agentVersion}</div>
@@ -195,9 +195,7 @@ function SecurityLockScreen({
     <div className="grid h-screen min-h-screen place-items-center bg-slate-50 px-4 text-slate-900">
       <form className="grid w-full max-w-sm gap-5 rounded-lg border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/60" onSubmit={onSubmit}>
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-blue-600 text-white">
-            <Lock className="size-5" />
-          </div>
+          <img className="size-10 rounded-lg object-cover shadow-sm ring-1 ring-slate-200" src={appIconSrc} alt="" />
           <div>
             <h1 className="text-lg font-bold">访问受保护</h1>
           </div>

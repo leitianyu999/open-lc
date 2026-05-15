@@ -16,6 +16,18 @@ const normalizeRoot = (root: string) => root.endsWith('/') ? root : `${root}/`
 export const resolveWebDistRoot = (webDistRoot = config.webDistRoot) =>
   normalizeRoot(webDistRoot || defaultWebDistRoot)
 
+const webAssetResponse = async (webDistRoot: string, name: string, fallbackName?: string) => {
+  const file = Bun.file(`${webDistRoot}${name}`)
+  if (await file.exists()) return new Response(file)
+
+  if (fallbackName) {
+    const fallback = Bun.file(`${webDistRoot}${fallbackName}`)
+    if (await fallback.exists()) return new Response(fallback)
+  }
+
+  return new Response('404 Not Found', { status: 404 })
+}
+
 export const createAgentApp = (options: CreateAgentAppOptions = {}) => {
   const app = new Hono()
   const webDistRoot = resolveWebDistRoot(options.webDistRoot)
@@ -28,10 +40,16 @@ export const createAgentApp = (options: CreateAgentAppOptions = {}) => {
     '/node_modules/.vite/',
     '/assets/',
   ]
+  const webAssetPaths = new Set([
+    '/apple-touch-icon.png',
+    '/favicon.ico',
+    '/favicon.png',
+    '/icon.png',
+  ])
 
   const shouldProxyToWebDev = (path: string) => {
     if (!webDevProxyEnabled) return false
-    if (path === '/' || path === '/favicon.ico') return true
+    if (path === '/' || webAssetPaths.has(path)) return true
     if (path.startsWith('/api/') || path === '/health') return false
     return webDevProxyPrefixes.some((prefix) => path.startsWith(prefix))
   }
@@ -85,7 +103,10 @@ export const createAgentApp = (options: CreateAgentAppOptions = {}) => {
   })
 
   app.use('/assets/*', serveStatic({ root: webDistRoot }))
-  app.get('/favicon.ico', serveStatic({ path: `${webDistRoot}favicon.ico` }))
+  app.get('/apple-touch-icon.png', () => webAssetResponse(webDistRoot, 'apple-touch-icon.png'))
+  app.get('/favicon.ico', () => webAssetResponse(webDistRoot, 'favicon.ico', 'favicon.png'))
+  app.get('/favicon.png', () => webAssetResponse(webDistRoot, 'favicon.png'))
+  app.get('/icon.png', () => webAssetResponse(webDistRoot, 'icon.png'))
   app.get('/', async (c) => {
     const index = Bun.file(`${webDistRoot}index.html`)
     if (!(await index.exists())) {

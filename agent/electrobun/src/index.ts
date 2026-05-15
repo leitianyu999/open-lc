@@ -9,6 +9,29 @@ import type { DesktopRuntimeSnapshot, DesktopSwitchResult } from '@lc-agent/api/
 const localHost = '127.0.0.1'
 const externalHost = '0.0.0.0'
 
+type ApplicationMenuRole =
+  | 'about'
+  | 'quit'
+  | 'hide'
+  | 'hideOthers'
+  | 'showAll'
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+
+type ApplicationMenuItem =
+  | {
+    label?: string
+    role?: ApplicationMenuRole
+    submenu?: ApplicationMenuItem[]
+  }
+  | {
+    type: 'divider' | 'separator'
+  }
+
 const fileExists = (path: string) => existsSync(path)
 
 const appDataRoot = () => {
@@ -56,6 +79,44 @@ const externalUrlsForPort = (port: number) => {
     }
   }
   return Array.from(new Set(urls))
+}
+
+const editMenu = (): ApplicationMenuItem => ({
+  label: '编辑',
+  submenu: [
+    { label: '撤销', role: 'undo' },
+    { label: '重做', role: 'redo' },
+    { type: 'separator' },
+    { label: '剪切', role: 'cut' },
+    { label: '复制', role: 'copy' },
+    { label: '粘贴', role: 'paste' },
+    { type: 'separator' },
+    { label: '全选', role: 'selectAll' },
+  ],
+})
+
+const installApplicationMenu = () => {
+  const appMenu: ApplicationMenuItem[] = process.platform === 'darwin'
+    ? [
+      {
+        label: 'LC Agent',
+        submenu: [
+          { label: '关于 LC Agent', role: 'about' },
+          { type: 'separator' },
+          { label: '隐藏 LC Agent', role: 'hide' },
+          { label: '隐藏其他', role: 'hideOthers' },
+          { label: '显示全部', role: 'showAll' },
+          { type: 'separator' },
+          { label: '退出 LC Agent', role: 'quit' },
+        ],
+      },
+      editMenu(),
+    ]
+    : [
+      editMenu(),
+    ]
+
+  Electrobun.ApplicationMenu.setApplicationMenu(appMenu)
 }
 
 const root = appDataRoot()
@@ -219,6 +280,8 @@ console.log(`[LC Agent Desktop] listener: ${agent.hostname}:${agent.port}`)
 
 await waitForHealth(origin)
 console.log('[LC Agent Desktop] server is healthy, opening window')
+
+installApplicationMenu()
 
 mainWindow = new BrowserWindow({
   title: 'LC Agent',

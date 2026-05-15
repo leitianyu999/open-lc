@@ -35,16 +35,22 @@ Release assets are published when a `vX.Y.Z` tag is pushed.
 | macOS Intel | `stable-macos-x64-LCAgent.dmg` |
 | Windows x64 | `stable-win-x64-LCAgent-Setup.zip` |
 | Linux x64 | `stable-linux-x64-LCAgent-Setup.tar.gz` |
-| Docker | `ghcr.io/<owner>/open-lc:<version>` |
+| Docker | `ghcr.io/leuki/open-lc:latest` |
 
 Docker images are built for `linux/amd64` and `linux/arm64`.
+
+If macOS reports that LC Agent cannot be opened, remove the downloaded app quarantine attribute after installing it:
+
+```sh
+sudo xattr -r -d com.apple.quarantine /Applications/LC\ Agent.app
+```
 
 ## Quick Start
 
 ### Docker
 
 ```sh
-docker run --rm -p 3100:3100 -v open-lc-data:/data ghcr.io/<owner>/open-lc:<version>
+docker run --rm -p 3100:3100 -v open-lc-data:/data ghcr.io/leuki/open-lc:latest
 ```
 
 The Docker image runs the Agent API and serves the built web console from the same process.

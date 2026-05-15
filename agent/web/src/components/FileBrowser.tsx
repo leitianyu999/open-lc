@@ -1,11 +1,9 @@
-import { useState, type ChangeEvent, type ReactNode } from 'react'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useAtom, useSetAtom } from 'jotai'
 import {
   CheckSquare,
   ChevronDown,
   ChevronRight,
-  Clipboard,
-  Copy,
   Download,
   File,
   Folder,
@@ -22,7 +20,6 @@ import {
   diskFilesAtom,
   errorAtom,
   executionOpenAtom,
-  executionTabAtom,
   parseQueueAtom,
   parseResultsAtom,
   pushNotificationAtom,
@@ -36,10 +33,9 @@ import {
   type WorkspaceDirectoryNode,
 } from '../state'
 import { formatBytes, formatDateTime, joinPath, parsePwd, pathParts } from '../lib/format'
-import { parseDownloaders, sendManyToDownloader, serializeDownloaders, summarizeSendResults, type DownloadableItem, type DownloaderConfig } from '../lib/downloaders'
-import { usePagination } from '../lib/usePagination'
-import { Button, EmptyState, Field, HoverTooltip, Input, MiddleEllipsis, Modal, Pagination, Panel, Select, StateIcon, Textarea } from './ui'
-import { DownloaderSendButton } from './DownloaderSendButton'
+import { parseDownloaders, serializeDownloaders } from '../lib/downloaders'
+import { Button, EmptyState, Field, HoverTooltip, Input, MiddleEllipsis, Modal, Panel, Select, Textarea } from './ui'
+import { ParseExecutionDrawer } from './ParseExecutionDrawer'
 
 const PAGE_SIZE = 50
 
@@ -61,24 +57,6 @@ type LoadDirectoryOptions = {
 type PendingShareDirectoryLoad = {
   dir: string
   options?: LoadDirectoryOptions
-}
-
-const copyText = async (value: string) => {
-  await navigator.clipboard.writeText(value)
-}
-
-const resultDownloadableId = (result: ParseResult, index: number) =>
-  String(result.job?.id ?? result.data?.record_id ?? result.fsId ?? index)
-
-const downloadableFromResult = (result: ParseResult, index: number): DownloadableItem | null => {
-  const url = result.data?.urls[0]
-  if (result.status !== 'success' || !url) return null
-  return {
-    id: resultDownloadableId(result, index),
-    filename: result.filename,
-    url,
-    ua: result.data?.ua,
-  }
 }
 
 function ModeSegmentedControl({
@@ -228,6 +206,27 @@ export function ParserWorkspace() {
   const executionCount = queue.length + results.length
   const downloaders = parseDownloaders(settingsQuery.data?.data.items.downloadersJson?.value)
   const fakeCookieTemplate = shareCookieTemplateQuery.data?.data.fakeCookie ?? ''
+  const queueRef = useRef(queue)
+
+  useEffect(() => {
+    queueRef.current = queue
+  }, [queue])
+
+  const setQueueAndRef = (updater: QueuedFile[] | ((prev: QueuedFile[]) => QueuedFile[])) => {
+    setQueue((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      queueRef.current = next
+      return next
+    })
+  }
+
+  const deleteWaitingQueueItem = (fsId: number) => {
+    setQueueAndRef((prev) => prev.filter((item) => item.fsId !== fsId || item.status !== 'waiting'))
+  }
+
+  const isStillWaiting = (fsId: number) =>
+    queueRef.current.some((item) => item.fsId === fsId && item.status === 'waiting')
+
   const setDefaultDownloader = async (downloaderId: string) => {
     const next = downloaders.map((item) => ({ ...item, isDefault: item.id === downloaderId }))
     try {
@@ -513,7 +512,7 @@ export function ParserWorkspace() {
       accountId: file.accountId,
       status: 'waiting' as const,
     }))
-    setQueue(next)
+    setQueueAndRef(next)
     return next
   }
 
@@ -580,7 +579,7 @@ export function ParserWorkspace() {
   }
 
   const runSubmittedJob = async (item: Pick<QueuedFile, 'fsId' | 'filename'>, job: ParseJob, prependResult = false) => {
-    setQueue((prev) => prev.map((row) => row.fsId === item.fsId ? {
+    setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
       ...row,
       status: statusFromJob(job),
       jobId: job.id,
@@ -589,7 +588,7 @@ export function ParserWorkspace() {
     } : row))
 
     const current = await pollJob(job, (next) => {
-      setQueue((prev) => prev.map((row) => row.fsId === item.fsId ? {
+      setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
         ...row,
         status: statusFromJob(next),
         jobId: next.id,
@@ -613,7 +612,8 @@ export function ParserWorkspace() {
     setError(null)
 
     for (const item of pending) {
-      setQueue((prev) => prev.map((row) => row.fsId === item.fsId ? { ...row, status: 'queued', message: '提交任务中' } : row))
+      if (!isStillWaiting(item.fsId)) continue
+      setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? { ...row, status: 'queued', message: '提交任务中' } : row))
       try {
         if (context.mode === 'disk') {
           const response = await diskResolveMutation.mutateAsync({
@@ -626,7 +626,7 @@ export function ParserWorkspace() {
             },
           })
           const data = response.data
-          setQueue((prev) => prev.map((row) => row.fsId === item.fsId ? {
+          setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
             ...row,
             status: 'success',
             message: '网盘取链成功',
@@ -653,7 +653,7 @@ export function ParserWorkspace() {
         await runSubmittedJob(item, submitted.data)
       } catch (error) {
         const message = messageFromError(error, '解析失败')
-        setQueue((prev) => prev.map((row) => row.fsId === item.fsId ? {
+        setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
           ...row,
           status: 'failed',
           message,
@@ -773,15 +773,15 @@ export function ParserWorkspace() {
           />
         </Panel>
       </div>
-      <ExecutionDrawer
+      <ParseExecutionDrawer
         downloaders={downloaders}
         open={executionOpen}
-        queueCount={queue.length}
-        resultCount={results.length}
+        queue={queue}
         results={results}
         onNotify={pushNotification}
         onError={setError}
         onDefaultDownloaderChange={(downloaderId) => void setDefaultDownloader(downloaderId)}
+        onDeleteWaitingItem={deleteWaitingQueueItem}
         onClose={() => setExecutionOpen(false)}
       />
       <Modal
@@ -829,86 +829,6 @@ export function ParserWorkspace() {
         </div>
       </Modal>
     </>
-  )
-}
-
-function ExecutionDrawer({
-  downloaders,
-  open,
-  queueCount,
-  resultCount,
-  results,
-  onNotify,
-  onError,
-  onDefaultDownloaderChange,
-  onClose,
-}: {
-  downloaders: DownloaderConfig[]
-  open: boolean
-  queueCount: number
-  resultCount: number
-  results: ParseResult[]
-  onNotify: (input: { variant: 'success' | 'error' | 'warning' | 'info', message: string }) => void
-  onError: (message: string | null) => void
-  onDefaultDownloaderChange: (downloaderId: string) => void
-  onClose: () => void
-}) {
-  const [activeTab, setActiveTab] = useAtom(executionTabAtom)
-
-  return (
-    <div className={`fixed inset-0 z-40 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
-      <button
-        aria-label="关闭执行面板"
-        className={`absolute inset-0 bg-slate-950/30 transition-opacity ${open ? 'opacity-100' : 'opacity-0'}`}
-        onClick={onClose}
-        tabIndex={open ? 0 : -1}
-        type="button"
-      />
-      <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[480px] flex-col border-l border-slate-200 bg-white shadow-2xl shadow-slate-950/20 transition-transform duration-200 max-sm:max-w-none ${open ? 'translate-x-0' : 'translate-x-full'}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="执行面板"
-      >
-        <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-slate-900">执行面板</h3>
-          </div>
-          <button className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" type="button" aria-label="关闭" onClick={onClose}>
-            <X className="size-5" />
-          </button>
-        </div>
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden p-5">
-          <div className="flex flex-wrap rounded-lg bg-slate-100 p-1">
-            {[
-              { key: 'queue' as const, label: '队列', count: queueCount },
-              { key: 'results' as const, label: '结果', count: resultCount },
-            ].map((tab) => (
-              <button
-                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${activeTab === tab.key ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                type="button"
-              >
-                <span>{tab.label}</span>
-                <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-blue-50 text-blue-700' : 'bg-white text-slate-500'}`}>{tab.count}</span>
-              </button>
-            ))}
-          </div>
-          <div className="min-h-0 overflow-y-auto pr-1">
-            {activeTab === 'queue' ? <QueuePanel /> : (
-              <ResultPanel
-                downloaders={downloaders}
-                results={results}
-                onError={onError}
-                onNotify={onNotify}
-                onDefaultDownloaderChange={onDefaultDownloaderChange}
-              />
-            )}
-          </div>
-        </div>
-      </aside>
-    </div>
   )
 }
 
@@ -1211,175 +1131,6 @@ function IndentedRow({ depth, children }: { depth: number, children: ReactNode }
   return (
     <div className="flex min-h-11 flex-wrap items-center gap-2 bg-slate-50/60 px-3 py-2 text-sm text-slate-500" style={{ paddingLeft: `${treeIndentPx(depth) + 48}px` }}>
       {children}
-    </div>
-  )
-}
-
-function QueuePanel() {
-  const queue = useAtomValue(parseQueueAtom)
-  const pagination = usePagination(queue, 5)
-  return (
-    <div className="grid gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold">解析队列</h3>
-        <span className="text-xs text-slate-500">{queue.length} 个文件</span>
-      </div>
-      {queue.length === 0 ? (
-        <EmptyState title="暂无队列" />
-      ) : (
-        <div className="grid gap-2">
-          {pagination.pageItems.map((item) => (
-            <div className="rounded-lg border border-slate-200 p-3" key={`${item.fsId}:${item.jobId ?? 'pending'}`}>
-              <div className="flex items-start gap-2">
-                <StateIcon status={item.status} />
-                <div className="min-w-0 flex-1">
-                  <MiddleEllipsis text={item.filename} className="text-sm font-semibold" />
-                  <div className="mt-1 text-xs text-slate-500">
-                    {item.size > 0 ? `${formatBytes(item.size)} · ` : ''}{item.message ?? item.status}
-                    {item.jobId ? ` · 任务 #${item.jobId}` : ''}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-          <Pagination {...pagination} onPageChange={pagination.setPage} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ResultPanel({
-  downloaders,
-  results,
-  onNotify,
-  onError,
-  onDefaultDownloaderChange,
-}: {
-  downloaders: DownloaderConfig[]
-  results: ParseResult[]
-  onNotify: (input: { variant: 'success' | 'error' | 'warning' | 'info', message: string }) => void
-  onError: (message: string | null) => void
-  onDefaultDownloaderChange: (downloaderId: string) => void
-}) {
-  const pagination = usePagination(results, 5)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [sending, setSending] = useState(false)
-  const allDownloadable = results
-    .map(downloadableFromResult)
-    .filter((item): item is DownloadableItem => item !== null)
-  const selectedItems = allDownloadable.filter((item) => selected.has(item.id))
-  const pageDownloadable = pagination.pageItems
-    .map((result, index) => downloadableFromResult(result, (pagination.page - 1) * pagination.pageSize + index))
-    .filter((item): item is DownloadableItem => item !== null)
-  const pageAllSelected = pageDownloadable.length > 0 && pageDownloadable.every((item) => selected.has(item.id))
-  const sendItems = async (downloader: DownloaderConfig, items: DownloadableItem[]) => {
-    if (items.length === 0) return
-    setSending(true)
-    onError(null)
-    try {
-      const sent = await sendManyToDownloader(downloader, items)
-      const failed = sent.filter((item) => !item.ok)
-      onNotify({
-        variant: failed.length > 0 ? 'warning' : 'success',
-        message: `${downloader.name}: ${summarizeSendResults(sent)}`,
-      })
-      if (failed[0]?.error) onError(failed[0].error)
-    } finally {
-      setSending(false)
-    }
-  }
-  const toggleSelected = (item: DownloadableItem, checked: boolean) => {
-    setSelected((current) => {
-      const next = new Set(current)
-      if (checked) next.add(item.id)
-      else next.delete(item.id)
-      return next
-    })
-  }
-  const togglePageSelected = () => {
-    setSelected((current) => {
-      const next = new Set(current)
-      for (const item of pageDownloadable) {
-        if (pageAllSelected) next.delete(item.id)
-        else next.add(item.id)
-      }
-      return next
-    })
-  }
-  return (
-    <div className="grid gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-bold">解析结果</h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-500">{results.length} 条</span>
-          <Button disabled={pageDownloadable.length === 0} onClick={togglePageSelected} size="sm" variant="secondary">
-            {pageAllSelected ? '取消本页' : '选择本页'}
-          </Button>
-          <DownloaderSendButton
-            downloaders={downloaders}
-            items={selectedItems}
-            onDefaultChange={onDefaultDownloaderChange}
-            pending={sending}
-            onSend={(downloader, items) => void sendItems(downloader, items)}
-          />
-        </div>
-      </div>
-      {results.length === 0 ? (
-        <EmptyState title="暂无结果" />
-      ) : (
-        <div className="grid gap-3">
-          {pagination.pageItems.map((result, index) => (
-            <div className={`rounded-lg border p-3 ${result.status === 'success' ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/40'}`} key={`${result.job?.id ?? result.data?.record_id ?? result.fsId}-${result.status}-${index}`}>
-              <div className="flex items-start gap-2">
-                {(() => {
-                  const item = downloadableFromResult(result, (pagination.page - 1) * pagination.pageSize + index)
-                  return item ? (
-                    <button aria-label="选择下载任务" className="mt-0.5 flex size-5 items-center justify-center rounded text-slate-500 hover:bg-white/70" onClick={() => toggleSelected(item, !selected.has(item.id))} type="button">
-                      {selected.has(item.id) ? <CheckSquare className="size-5 text-blue-600" /> : <Square className="size-5" />}
-                    </button>
-                  ) : <StateIcon status={result.status} />
-                })()}
-                <div className="min-w-0 flex-1">
-                  <MiddleEllipsis text={result.filename} className="text-sm font-bold" />
-                  <div className="mt-1 text-xs text-slate-600">{result.message}</div>
-                </div>
-              </div>
-              {result.status === 'success' && result.data ? (
-                <div className="mt-3 grid gap-2 text-xs">
-                  <div className="rounded-md bg-white px-3 py-2 text-slate-600 ring-1 ring-slate-200">
-                    账号 {result.data.account_id} · {result.data.parseRoute ? `${result.data.credentialSource}.${result.data.parseRoute}` : '-'}
-                  </div>
-                  <div className="break-all rounded-md bg-white px-3 py-2 text-slate-600 ring-1 ring-slate-200">UA: {result.data.ua}</div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button className="min-h-9 px-3 py-1.5" onClick={() => copyText(result.data?.urls[0] ?? '')} variant="secondary">
-                      <Copy className="size-4" />
-                      复制直链
-                    </Button>
-                    <Button className="min-h-9 px-3 py-1.5" onClick={() => copyText(result.data?.ua ?? '')} variant="secondary">
-                      <Clipboard className="size-4" />
-                      复制 UA
-                    </Button>
-                    {(() => {
-                      const item = downloadableFromResult(result, (pagination.page - 1) * pagination.pageSize + index)
-                      return item ? (
-                        <DownloaderSendButton
-                          downloaders={downloaders}
-                          items={[item]}
-                          menu={false}
-                          pending={sending}
-                          onSend={(downloader, items) => void sendItems(downloader, items)}
-                        />
-                      ) : null
-                    })()}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))}
-          <Pagination {...pagination} onPageChange={pagination.setPage} />
-        </div>
-      )}
     </div>
   )
 }

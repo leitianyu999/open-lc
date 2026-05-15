@@ -17,5 +17,14 @@ export default {
       '../web/dist': 'web/dist',
       '../drizzle': 'drizzle',
     },
+    mac: {
+      icons: 'icon.iconset',
+    },
+    win: {
+      icon: 'icon.png',
+    },
+    linux: {
+      icon: 'icon.png',
+    },
   },
 } satisfies ElectrobunConfig
