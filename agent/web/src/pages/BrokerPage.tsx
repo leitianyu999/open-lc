@@ -33,7 +33,10 @@ const runtimeDiagnosis = (broker: BrokerRuntime['broker']) => {
   if (!broker.agentTokenConfigured) return { variant: 'warning' as const, message: 'Agent Token 未配置，Broker 不会接收心跳或任务轮询。' }
   if (!broker.baseUrl) return { variant: 'warning' as const, message: 'Broker Base URL 未配置，Agent 无法发起连接。' }
   if (!broker.enabled) return { variant: 'warning' as const, message: 'Broker 执行未启用，自动心跳和 Poll 不会运行。' }
-  if (broker.lastHeartbeatErrorCode === 'INVALID_AGENT_TOKEN' || broker.lastPollErrorCode === 'INVALID_AGENT_TOKEN') {
+  if (
+    (broker.lastHeartbeatStatus === 'failed' && broker.lastHeartbeatErrorCode === 'INVALID_AGENT_TOKEN') ||
+    (broker.lastPollStatus === 'failed' && broker.lastPollErrorCode === 'INVALID_AGENT_TOKEN')
+  ) {
     return { variant: 'error' as const, message: 'Broker 拒绝了当前 Bearer token。通常是复制了旧 token、Broker 端已轮换 token，或当前 Agent 已被禁用。' }
   }
   if (broker.lastHeartbeatStatus === 'failed' || broker.lastPollStatus === 'failed') {
@@ -99,6 +102,15 @@ export function BrokerPage() {
     }
   }
 
+  const refreshRuntime = async () => {
+    setError(null)
+    try {
+      await runtimeQuery.refetch()
+    } catch (error) {
+      setError(messageFromError(error, 'Broker 执行状态刷新失败'))
+    }
+  }
+
   const terminalCounts = useMemo(() => {
     const success = recentRuns.filter((run) => run.status === 'success' || run.status === 'submitted_success').length
     const failed = recentRuns.filter((run) => ['failed', 'expired', 'not_selected', 'submitted_failure'].includes(run.status)).length
@@ -107,8 +119,17 @@ export function BrokerPage() {
 
   return (
     <div className="grid gap-5">
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold">Broker 执行</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {runtimeQuery.isFetching ? '刷新中' : '自动刷新 5 秒'}
+          </span>
+          <Button disabled={runtimeQuery.isFetching} onClick={refreshRuntime} size="sm" variant="secondary">
+            <RefreshCw className={`size-4 ${runtimeQuery.isFetching ? 'animate-spin' : ''}`} />
+            刷新
+          </Button>
+        </div>
       </div>
 
       <Panel className="grid gap-4">

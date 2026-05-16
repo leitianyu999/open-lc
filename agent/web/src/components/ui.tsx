@@ -73,6 +73,26 @@ const middleEllipsis = (text: string, width: number, font: string) => {
   return best
 }
 
+const copyTextToClipboard = async (value: string) => {
+  if (!value) return false
+  try {
+    await navigator.clipboard.writeText(value)
+    return true
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.top = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    const copied = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return copied
+  }
+}
+
 export function Panel({ children, className = '' }: { children: React.ReactNode, className?: string }) {
   return <section className={`rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/40 ${className}`}>{children}</section>
 }
@@ -132,6 +152,8 @@ export function MiddleEllipsis({
     maxWidth: number
     placement: 'top' | 'bottom'
   } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
 
   const recompute = () => {
     const element = textRef.current
@@ -190,6 +212,10 @@ export function MiddleEllipsis({
     }
   }, [tooltip])
 
+  useEffect(() => () => {
+    if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current)
+  }, [])
+
   const showTooltip = () => {
     const isTruncated = recompute()
     if (!isTruncated) {
@@ -199,18 +225,34 @@ export function MiddleEllipsis({
     updateTooltip()
   }
 
+  const copyOriginalText = async () => {
+    const copiedOk = await copyTextToClipboard(text)
+    if (!copiedOk) return
+    setCopied(true)
+    updateTooltip()
+    if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current)
+    copiedTimerRef.current = window.setTimeout(() => {
+      setCopied(false)
+      if (!truncated) setTooltip(null)
+    }, 1200)
+  }
+
   return (
     <span
       ref={wrapperRef}
-      className="relative block min-w-0"
+      className="relative block min-w-0 cursor-copy"
       onBlur={() => setTooltip(null)}
+      onClick={() => {
+        void copyOriginalText()
+      }}
       onMouseEnter={showTooltip}
       onMouseLeave={() => setTooltip(null)}
+      title="点击复制"
     >
       <span ref={textRef} className={`block min-w-0 overflow-hidden whitespace-nowrap ${className}`} aria-label={text}>
         {display}
       </span>
-      {tooltip && truncated ? (
+      {tooltip && (truncated || copied) ? (
         <span
           className="pointer-events-none fixed z-40 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs font-medium leading-5 text-white shadow-lg shadow-slate-950/25"
           style={{
@@ -220,7 +262,7 @@ export function MiddleEllipsis({
             transform: tooltip.placement === 'top' ? 'translateY(-100%)' : undefined,
           }}
         >
-          {text}
+          {copied ? '已复制' : text}
         </span>
       ) : null}
     </span>

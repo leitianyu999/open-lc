@@ -7,7 +7,6 @@ import {
 import { AppShell } from './components/AppShell'
 import { HomePage } from './pages/HomePage'
 import { HistoryPage } from './pages/HistoryPage'
-import { HistoryDetailPage } from './pages/HistoryDetailPage'
 import { MyAccountsPage } from './pages/MyAccountsPage'
 import { BrokerPage } from './pages/BrokerPage'
 import { BrokerRunDetailPage } from './pages/BrokerRunDetailPage'
@@ -27,12 +26,6 @@ const localHistoryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/history',
   component: HistoryPage,
-})
-
-const localHistoryDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/history/$recordId',
-  component: HistoryDetailPage,
 })
 
 const localAccountsRoute = createRoute({
@@ -62,7 +55,6 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   localHistoryRoute,
-  localHistoryDetailRoute,
   localAccountsRoute,
   brokerRoute,
   brokerRunDetailRoute,

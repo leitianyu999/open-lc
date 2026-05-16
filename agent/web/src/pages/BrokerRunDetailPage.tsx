@@ -1,16 +1,60 @@
 import { Link, useParams } from '@tanstack/react-router'
+import { useSetAtom } from 'jotai'
 import { ArrowLeft, FileSearch } from 'lucide-react'
-import { api, type BrokerRunDetail } from '../api'
+import { useState } from 'react'
+import { api, messageFromError, type BrokerRunDetail, type LocalHistoryRecord } from '../api'
+import { HistoryDetailDrawer } from '../components/HistoryDetailDrawer'
 import { Button, EmptyState, Panel, StatusBadge } from '../components/ui'
 import { formatBytes, formatDateTime } from '../lib/format'
+import { parseDownloaders, sendManyToDownloader, summarizeSendResults, type DownloadableItem, type DownloaderConfig } from '../lib/downloaders'
+import { errorAtom, pushNotificationAtom } from '../state'
 
 export function BrokerRunDetailPage() {
   const { runId } = useParams({ from: '/broker/runs/$runId' })
+  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null)
+  const [sending, setSending] = useState(false)
+  const setError = useSetAtom(errorAtom)
+  const pushNotification = useSetAtom(pushNotificationAtom)
   const query = api.api.broker.runs[':id'].$get.useQuery({
     param: { id: runId },
     refetchInterval: 5000,
   })
+  const settingsQuery = api.api.settings.$get.useQuery()
+  const reparseMutation = api.api.local.history[':id'].reparse.$post.useMutation()
+  const detailQuery = api.api.local.history[':id'].$get.useQuery({
+    param: { id: String(selectedRecordId ?? '') },
+    enabled: selectedRecordId !== null,
+  })
   const detail = query.data?.data
+  const downloaders = parseDownloaders(settingsQuery.data?.data.items.downloadersJson?.value)
+
+  const reparse = async (record: LocalHistoryRecord) => {
+    setError(null)
+    try {
+      await reparseMutation.mutateAsync({
+        param: { id: String(record.id) },
+        json: {},
+      })
+      await detailQuery.refetch()
+    } catch (error) {
+      setError(messageFromError(error, '重新解析失败'))
+    }
+  }
+
+  const sendItems = async (downloader: DownloaderConfig, items: DownloadableItem[]) => {
+    if (items.length === 0) return
+    setSending(true)
+    setError(null)
+    try {
+      const sent = await sendManyToDownloader(downloader, items)
+      pushNotification({
+        variant: sent.some((item) => !item.ok) ? 'warning' : 'success',
+        message: `${downloader.name}: ${summarizeSendResults(sent)}`,
+      })
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div className="grid gap-5">
@@ -63,12 +107,10 @@ export function BrokerRunDetailPage() {
             ) : null}
             {detail.localParseRecordId ? (
               <div className="flex flex-wrap items-center gap-2">
-                <Link to="/history/$recordId" params={{ recordId: String(detail.localParseRecordId) }}>
-                  <Button size="sm" variant="secondary">
-                    <FileSearch className="size-4" />
-                    查看本地解析历史 #{detail.localParseRecordId}
-                  </Button>
-                </Link>
+                <Button onClick={() => setSelectedRecordId(detail.localParseRecordId ?? null)} size="sm" variant="secondary">
+                  <FileSearch className="size-4" />
+                  查看本地解析历史 #{detail.localParseRecordId}
+                </Button>
               </div>
             ) : null}
           </Panel>
@@ -82,6 +124,17 @@ export function BrokerRunDetailPage() {
           </Panel>
         </>
       )}
+      <HistoryDetailDrawer
+        detail={detailQuery.data?.data}
+        downloaders={downloaders}
+        loading={detailQuery.isFetching}
+        open={selectedRecordId !== null}
+        onClose={() => setSelectedRecordId(null)}
+        onReparse={reparse}
+        onSend={(downloader, items) => void sendItems(downloader, items)}
+        reparsePending={reparseMutation.isPending}
+        sending={sending}
+      />
     </div>
   )
 }

@@ -55,6 +55,23 @@ docker run --rm -p 3100:3100 -v open-lc-data:/data ghcr.io/leuki/open-lc:latest
 
 The Docker image runs the Agent API and serves the built web console from the same process.
 
+Docker Compose example:
+
+```yaml
+services:
+  open-lc:
+    image: ghcr.io/leuki/open-lc:latest
+    container_name: open-lc
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - open-lc-data:/data
+
+volumes:
+  open-lc-data:
+```
+
 ### Local Development
 
 ```sh
@@ -102,39 +119,9 @@ Start with:
 
 A compatible Broker must keep the Agent-facing HTTP contract and state behavior compatible. It does not need to copy the official Broker database schema, admin console, user frontend, or settlement implementation.
 
-## Development
+## Acknowledgements
 
-```sh
-bun run build:agent-web
-bun run build:agent-desktop
-bun run typecheck
-bun run db:agent:check
-```
-
-Database migration:
-
-```sh
-bun run db:agent:migrate
-```
-
-Schema and migrations live in:
-
-- `agent/api/src/db/schema.ts`
-- `agent/drizzle.config.ts`
-- `agent/drizzle/`
-
-## Release
-
-The repository keeps Agent package versions as `0.0.0`. The release workflow injects the tag version during build.
-
-Push a tag in this format:
-
-```sh
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-GitHub Actions builds desktop artifacts, pushes the Docker image, and creates a GitHub Release with a table of download and image addresses.
+Thanks to the [LinuxDo community](https://linux.do/) for the discussions and feedback that inspired this project.
 
 ## License
 
