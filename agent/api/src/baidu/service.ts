@@ -75,6 +75,14 @@ type AccountWaitOptions = {
   onWait?: (context: { waitMs: number }) => void
 }
 
+type ShareDirFallbackInfo = {
+  requestedDir: string
+  resolvedDir: string
+  fsIds: number[]
+  matchedFsId: number
+  filename: string
+}
+
 const ensureNumberArray = (value: unknown) => {
   if (!Array.isArray(value)) throw badRequest('BAD_FS_IDS', 'fsIds 必须是数组')
 
@@ -115,6 +123,64 @@ const validateSingleFile = (files: ShareFile[], fsIds: number[]) => {
     throw badRequest('ONLY_ONE_FILE', '后端单次只支持解析一个文件，请由前端顺序调度多文件')
   }
   return validateFiles(files, fsIds)[0]
+}
+
+const isSharePathError = (error: unknown) => {
+  const info = appErrorInfo(error)
+  return info.code === 'GET_FILE_LIST_FAILED' && info.message.includes('路径错误')
+}
+
+const getShareForParse = async (params: {
+  surl: string
+  pwd?: string
+  dir?: string
+  fsIds: number[]
+  jobId?: number
+}) => {
+  const requestedDir = params.dir?.trim() || '/'
+  try {
+    const share = await client.getFileList({
+      surl: params.surl,
+      pwd: params.pwd,
+      dir: requestedDir,
+      num: 100,
+    })
+    return { share, file: validateSingleFile(share.list, params.fsIds), dir: requestedDir }
+  } catch (error) {
+    if (requestedDir === '/' || !isSharePathError(error)) throw error
+
+    const rootShare = await client.getFileList({
+      surl: params.surl,
+      pwd: params.pwd,
+      dir: '/',
+      num: 100,
+    })
+    try {
+      const file = validateSingleFile(rootShare.list, params.fsIds)
+      const fallback: ShareDirFallbackInfo = {
+        requestedDir,
+        resolvedDir: '/',
+        fsIds: params.fsIds,
+        matchedFsId: file.fs_id,
+        filename: file.server_filename,
+      }
+      if (params.jobId) recordShareDirFallbackEvent(params.jobId, fallback)
+      return { share: rootShare, file, dir: '/', fallback }
+    } catch {
+      throw error
+    }
+  }
+}
+
+const recordShareDirFallbackEvent = (jobId: number, fallback: ShareDirFallbackInfo) => {
+  recordParseEvent({
+    type: 'share_dir_fallback',
+    jobId,
+    status: 'warning',
+    code: 'SHARE_DIR_FALLBACK_TO_ROOT',
+    message: '分享目录路径错误，已回退到根目录并命中文件',
+    details: fallback,
+  })
 }
 
 export const getShareFileList = async (input: FileListInput) => {
@@ -1324,20 +1390,20 @@ const executeParse = async (params: {
   const fsIds = ensureNumberArray(params.fsIds)
   const surl = parseShareUrl(params.shareUrl)
   const pwd = params.pwd || parseSharePwd(params.shareUrl)
-  const share = await client.getFileList({
+  const resolved = await getShareForParse({
     surl,
     pwd,
     dir: params.dir,
-    num: 100,
+    fsIds,
+    jobId: params.jobId,
   })
-  const file = validateSingleFile(share.list, fsIds)
   return executeWithAccounts({
     user: params.user,
-    share,
-    file,
+    share: resolved.share,
+    file: resolved.file,
     shareUrl: params.shareUrl,
     pwd,
-    dir: params.dir,
+    dir: resolved.dir,
     jobId: params.jobId,
     accountWait: params.accountWait,
   })
@@ -1619,13 +1685,12 @@ export const submitParseJob = async (input: ParseInput, user?: User) => {
   const fsIds = ensureNumberArray(input.fsIds)
   const surl = parseShareUrl(input.shareUrl)
   const pwd = input.pwd || parseSharePwd(input.shareUrl)
-  const share = await client.getFileList({
+  const resolved = await getShareForParse({
     surl,
     pwd,
     dir: input.dir,
-    num: 100,
+    fsIds,
   })
-  const file = validateSingleFile(share.list, fsIds)
 
   db.insert(parseJobs)
     .values({
@@ -1633,11 +1698,11 @@ export const submitParseJob = async (input: ParseInput, user?: User) => {
       shareUrl: input.shareUrl,
       shareSurl: surl,
       pwd,
-      dir: input.dir ?? '/',
-      fsId: String(file.fs_id),
-      filename: file.server_filename,
-      sizeBytes: file.size,
-      md5: file.md5,
+      dir: resolved.dir,
+      fsId: String(resolved.file.fs_id),
+      filename: resolved.file.server_filename,
+      sizeBytes: resolved.file.size,
+      md5: resolved.file.md5,
       status: 'queued',
       queueSeq: nextQueueSeq(),
     })
@@ -1648,8 +1713,9 @@ export const submitParseJob = async (input: ParseInput, user?: User) => {
     type: 'job_queued',
     jobId: job.id,
     message: '解析任务已入队',
-    details: { queueSeq: job.queueSeq, fsId: job.fsId, filename: job.filename },
+    details: { queueSeq: job.queueSeq, fsId: job.fsId, filename: job.filename, dir: job.dir },
   })
+  if (resolved.fallback) recordShareDirFallbackEvent(job.id, resolved.fallback)
   void processNextJob()
   return serializeJob(job)
 }

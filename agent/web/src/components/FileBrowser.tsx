@@ -89,11 +89,11 @@ const fileDir = (file: ShareFile, fallbackDir: string) => {
   return index <= 0 ? '/' : file.path.slice(0, index)
 }
 
-const selectedFromFile = (file: ShareFile, dir: string, accountId?: number): SelectedFile => ({
+const selectedFromFile = (file: ShareFile, dir: string, mode: 'share' | 'disk', accountId?: number): SelectedFile => ({
   fsId: file.fs_id,
   filename: file.server_filename,
   size: file.size,
-  dir: fileDir(file, dir),
+  dir: mode === 'disk' ? fileDir(file, dir) : dir,
   path: file.path,
   accountId,
 })
@@ -454,7 +454,7 @@ export function ParserWorkspace() {
   const toggleFile = (file: ShareFile, dir: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Map(prev)
-      if (checked) next.set(file.fs_id, selectedFromFile(file, dir, context.mode === 'disk' ? context.accountId : undefined))
+      if (checked) next.set(file.fs_id, selectedFromFile(file, dir, context.mode, context.mode === 'disk' ? context.accountId : undefined))
       else next.delete(file.fs_id)
       return next
     })
@@ -465,7 +465,7 @@ export function ParserWorkspace() {
     setSelected((prev) => {
       const next = new Map(prev)
       for (const file of files) {
-        if (checked) next.set(file.fs_id, selectedFromFile(file, dir, context.mode === 'disk' ? context.accountId : undefined))
+        if (checked) next.set(file.fs_id, selectedFromFile(file, dir, context.mode, context.mode === 'disk' ? context.accountId : undefined))
         else next.delete(file.fs_id)
       }
       return next
