@@ -119,11 +119,11 @@ Start with:
 
 A compatible Broker must keep the Agent-facing HTTP contract and state behavior compatible. It does not need to copy the official Broker database schema, admin console, user frontend, or settlement implementation.
 
-## Open Platform Whitepaper
+## LC Agent Open Platform Technical and Risk Whitepaper
 
-For the Agent open-platform workflow, account custody model, official API references, and risk controls, see:
+To understand how LC Agent uses official open-platform APIs, what account operations are involved, and how the local Agent design reduces account and operational risk, see:
 
-- `docs/LC_AGENT_OPEN_PLATFORM_WHITEPAPER.md`
+- `docs/OPEN_PLATFORM_TECH_AND_RISK_WHITEPAPER.md`
 
 ## Acknowledgements
 
