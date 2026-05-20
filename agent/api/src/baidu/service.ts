@@ -1,6 +1,18 @@
 import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
 import { db, lastInsertId } from '../db'
-import { baiduAccounts, baiduTempFiles, parseAttempts, parseEvents, parseJobs, parseRecords, users, type BaiduAccount, type ParseJob, type ParseRecord, type User } from '../db/schema'
+import {
+  baiduAccounts,
+  baiduTempFiles,
+  parseAttempts,
+  parseEvents,
+  parseJobs,
+  parseRecords,
+  users,
+  type BaiduAccount,
+  type ParseJob,
+  type ParseRecord,
+  type User,
+} from '../db/schema'
 import { badRequest, forbidden, notFound, upstreamError } from '../lib/errors'
 import { createProxiedDownloadUrl } from '../lib/linkProxy'
 import { getAccountPolicy, getBaiduSettings, getDownloadSettings, getParseLimits } from '../settings/service'
@@ -55,7 +67,7 @@ type ParseExecutionError = {
   code: string
   message: string
   status?: 'failed'
-  attempts?: Array<{ accountId: number, code: string, message: string }>
+  attempts?: Array<{ accountId: number; code: string; message: string }>
 }
 
 type AccountWaitOptions = {
@@ -126,44 +138,37 @@ const downloadUaForRoute = (route?: string | null, credentialSource: CredentialS
   return download.directDownloadUA
 }
 
-const resolveUaForRoute = (route: ParseRoute) =>
-  downloadUaForRoute(route)
+const resolveUaForRoute = (route: ParseRoute) => downloadUaForRoute(route)
 
 const serializeJob = (job: ParseJob) => {
   const aheadCount = getAheadCount(job)
   const record = job.parseRecordId
     ? db.select({ accountId: parseRecords.accountId }).from(parseRecords).where(eq(parseRecords.id, job.parseRecordId)).get()
     : null
-  const {
-    route: _legacyRoute,
-    accountOwnerUserId: _accountOwnerUserId,
-    ...publicJob
-  } = job
+  const { route: _legacyRoute, accountOwnerUserId: _accountOwnerUserId, ...publicJob } = job
   return {
     ...publicJob,
     position: job.status === 'queued' ? aheadCount + 1 : 0,
     ahead_count: aheadCount,
-    result: job.resultUrl ? {
-      message: 'success',
-      filename: job.filename,
-      fs_id: Number(job.fsId),
-      ua: job.resultUa ?? getDownloadSettings().directDownloadUA,
-      account_id: String(record?.accountId ?? ''),
-      urls: [createProxiedDownloadUrl(job.resultUrl, { filename: job.filename, expiresAt: job.linkExpiresAt })],
-      credentialSource: job.credentialSource,
-      parseRoute: job.parseRoute,
-      record_id: job.parseRecordId,
-      link_expires_at: job.linkExpiresAt?.toISOString(),
-    } : null,
+    result: job.resultUrl
+      ? {
+          message: 'success',
+          filename: job.filename,
+          fs_id: Number(job.fsId),
+          ua: job.resultUa ?? getDownloadSettings().directDownloadUA,
+          account_id: String(record?.accountId ?? ''),
+          urls: [createProxiedDownloadUrl(job.resultUrl, { filename: job.filename, expiresAt: job.linkExpiresAt })],
+          credentialSource: job.credentialSource,
+          parseRoute: job.parseRoute,
+          record_id: job.parseRecordId,
+          link_expires_at: job.linkExpiresAt?.toISOString(),
+        }
+      : null,
   }
 }
 
 const serializeRecord = (record: ParseRecord) => {
-  const {
-    route: _legacyRoute,
-    accountOwnerUserId: _accountOwnerUserId,
-    ...publicRecord
-  } = record
+  const { route: _legacyRoute, accountOwnerUserId: _accountOwnerUserId, ...publicRecord } = record
   return {
     ...publicRecord,
     routeLabel: record.shareSurl.startsWith('disk:')
@@ -171,9 +176,7 @@ const serializeRecord = (record: ParseRecord) => {
       : record.parseRoute
         ? `${record.credentialSource}.${record.parseRoute}`
         : '-',
-    resultUrl: record.resultUrl
-      ? createProxiedDownloadUrl(record.resultUrl, { filename: record.filename, expiresAt: record.linkExpiresAt })
-      : record.resultUrl,
+    resultUrl: record.resultUrl ? createProxiedDownloadUrl(record.resultUrl, { filename: record.filename, expiresAt: record.linkExpiresAt }) : record.resultUrl,
     linkExpired: record.linkExpiresAt ? record.linkExpiresAt.getTime() <= Date.now() : true,
   }
 }
@@ -194,17 +197,19 @@ const serializeEvent = (event: typeof parseEvents.$inferSelect) => ({
 
 const getAheadCount = (job: ParseJob) => {
   if (job.status !== 'queued') return 0
-  const [row] = db.select({ value: sql<number>`COUNT(*)` }).from(parseJobs)
-    .where(or(
-      eq(parseJobs.status, 'running'),
-      and(eq(parseJobs.status, 'queued'), sql`${parseJobs.queueSeq} < ${job.queueSeq}`),
-    ))
+  const [row] = db
+    .select({ value: sql<number>`COUNT(*)` })
+    .from(parseJobs)
+    .where(or(eq(parseJobs.status, 'running'), and(eq(parseJobs.status, 'queued'), sql`${parseJobs.queueSeq} < ${job.queueSeq}`)))
     .all()
   return row.value
 }
 
 const nextQueueSeq = () => {
-  const [{ value }] = db.select({ value: sql<number>`COALESCE(MAX(${parseJobs.queueSeq}), 0)` }).from(parseJobs).all()
+  const [{ value }] = db
+    .select({ value: sql<number>`COALESCE(MAX(${parseJobs.queueSeq}), 0)` })
+    .from(parseJobs)
+    .all()
   return Number(value) + 1
 }
 
@@ -220,18 +225,20 @@ export const recordParseEvent = (input: {
   details?: Record<string, unknown> | null
   createdAt?: Date
 }) => {
-  db.insert(parseEvents).values({
-    parseRecordId: input.recordId ?? null,
-    parseJobId: input.jobId ?? null,
-    accountId: input.accountId ?? null,
-    tempFileId: input.tempFileId ?? null,
-    type: input.type,
-    status: input.status ?? 'info',
-    code: input.code ?? null,
-    message: input.message,
-    details: input.details ? JSON.stringify(input.details) : null,
-    createdAt: input.createdAt,
-  }).run()
+  db.insert(parseEvents)
+    .values({
+      parseRecordId: input.recordId ?? null,
+      parseJobId: input.jobId ?? null,
+      accountId: input.accountId ?? null,
+      tempFileId: input.tempFileId ?? null,
+      type: input.type,
+      status: input.status ?? 'info',
+      code: input.code ?? null,
+      message: input.message,
+      details: input.details ? JSON.stringify(input.details) : null,
+      createdAt: input.createdAt,
+    })
+    .run()
 }
 
 const parentDirOfPath = (path: string) => {
@@ -266,28 +273,30 @@ const createRecord = (input: {
   errorMessage?: string | null
   attemptCount?: number
 }) => {
-  db.insert(parseRecords).values({
-    userId: input.userId,
-    accountId: input.accountId ?? null,
-    accountOwnerUserId: input.accountOwnerUserId ?? null,
-    shareSurl: input.shareSurl,
-    shareUrl: input.shareUrl,
-    pwd: input.pwd,
-    dir: input.dir,
-    fsId: String(input.file.fs_id),
-    filename: input.file.server_filename,
-    sizeBytes: input.file.size,
-    md5: input.file.md5,
-    status: input.status,
-    credentialSource: input.credentialSource ?? 'cookie',
-    parseRoute: input.parseRoute ?? null,
-    resultUrl: input.resultUrl ?? null,
-    resultUa: input.resultUa ?? null,
-    linkExpiresAt: input.linkExpiresAt ?? null,
-    errorCode: input.errorCode ?? null,
-    errorMessage: input.errorMessage ?? null,
-    attemptCount: input.attemptCount ?? 0,
-  }).run()
+  db.insert(parseRecords)
+    .values({
+      userId: input.userId,
+      accountId: input.accountId ?? null,
+      accountOwnerUserId: input.accountOwnerUserId ?? null,
+      shareSurl: input.shareSurl,
+      shareUrl: input.shareUrl,
+      pwd: input.pwd,
+      dir: input.dir,
+      fsId: String(input.file.fs_id),
+      filename: input.file.server_filename,
+      sizeBytes: input.file.size,
+      md5: input.file.md5,
+      status: input.status,
+      credentialSource: input.credentialSource ?? 'cookie',
+      parseRoute: input.parseRoute ?? null,
+      resultUrl: input.resultUrl ?? null,
+      resultUa: input.resultUa ?? null,
+      linkExpiresAt: input.linkExpiresAt ?? null,
+      errorCode: input.errorCode ?? null,
+      errorMessage: input.errorMessage ?? null,
+      attemptCount: input.attemptCount ?? 0,
+    })
+    .run()
   return lastInsertId()
 }
 
@@ -301,29 +310,25 @@ const createAttempt = (input: {
   errorCode?: string | null
   message?: string | null
 }) => {
-  db.insert(parseAttempts).values({
-    parseRecordId: input.recordId,
-    parseJobId: input.jobId,
-    userId: input.userId,
-    accountId: input.accountId,
-    fsId: input.fsId,
-    status: input.status,
-    errorCode: input.errorCode,
-    message: input.message,
-  }).run()
+  db.insert(parseAttempts)
+    .values({
+      parseRecordId: input.recordId,
+      parseJobId: input.jobId,
+      userId: input.userId,
+      accountId: input.accountId,
+      fsId: input.fsId,
+      status: input.status,
+      errorCode: input.errorCode,
+      message: input.message,
+    })
+    .run()
 }
 
 const attachExecutionArtifacts = (recordId: number, jobId?: number) => {
   if (!jobId) return
-  db.update(parseAttempts).set({ parseRecordId: recordId })
-    .where(eq(parseAttempts.parseJobId, jobId))
-    .run()
-  db.update(baiduTempFiles).set({ parseRecordId: recordId, updatedAt: new Date() })
-    .where(eq(baiduTempFiles.parseJobId, jobId))
-    .run()
-  db.update(parseEvents).set({ parseRecordId: recordId })
-    .where(eq(parseEvents.parseJobId, jobId))
-    .run()
+  db.update(parseAttempts).set({ parseRecordId: recordId }).where(eq(parseAttempts.parseJobId, jobId)).run()
+  db.update(baiduTempFiles).set({ parseRecordId: recordId, updatedAt: new Date() }).where(eq(baiduTempFiles.parseJobId, jobId)).run()
+  db.update(parseEvents).set({ parseRecordId: recordId }).where(eq(parseEvents.parseJobId, jobId)).run()
 }
 
 const appErrorInfo = (error: unknown) => {
@@ -366,10 +371,12 @@ const ensureDiskDirectory = async (account: BaiduAccount, path: string) => {
 
   const bdstoken = await client.getBdstoken(account.cookie)
   for (const dir of parentDirsFor(path)) {
-    const exists = await client.diskPathExists({
-      path: dir,
-      cookie: account.cookie,
-    }).catch(() => false)
+    const exists = await client
+      .diskPathExists({
+        path: dir,
+        cookie: account.cookie,
+      })
+      .catch(() => false)
     if (exists) continue
 
     const created = await client.createDiskDirectory({
@@ -424,7 +431,7 @@ const withOpenPlatformAccessToken = async <T>(params: {
   account: BaiduAccount
   jobId?: number | null
   trigger: 'parse_runtime' | 'cleanup'
-  action: (input: { accessToken: string, account: BaiduAccount }) => Promise<T>
+  action: (input: { accessToken: string; account: BaiduAccount }) => Promise<T>
 }) => {
   const verified = await verifyOpenPlatformToken(params.account, {
     trigger: params.trigger,
@@ -454,12 +461,7 @@ const withOpenPlatformAccessToken = async <T>(params: {
   }
 }
 
-const parseDirect = async (params: {
-  share: Awaited<ReturnType<BaiduClient['getFileList']>>
-  file: ShareFile
-  account: BaiduAccount
-  jobId?: number
-}) => {
+const parseDirect = async (params: { share: Awaited<ReturnType<BaiduClient['getFileList']>>; file: ShareFile; account: BaiduAccount; jobId?: number }) => {
   recordParseEvent({
     type: 'direct_started',
     jobId: params.jobId,
@@ -500,12 +502,7 @@ const parseDirect = async (params: {
   }
 }
 
-const resolveCookieTransferUrl = async (params: {
-  path: string
-  account: BaiduAccount
-  jobId?: number
-  tempId?: number
-}) => {
+const resolveCookieTransferUrl = async (params: { path: string; account: BaiduAccount; jobId?: number; tempId?: number }) => {
   recordParseEvent({
     type: 'pcs_dlink_started',
     jobId: params.jobId,
@@ -568,59 +565,72 @@ const resolveOpenPlatformTransferUrl = async (params: {
 }
 
 const markTempDeleteFailure = (tempId: number, message: string, code?: string) => {
-  db.update(baiduTempFiles).set({
-    status: code === 'TEMP_DELETE_NEEDS_VERIFY' ? 'delete_failed' : 'delete_pending',
-    errorMessage: message.slice(0, 300),
-    retryCount: sql`${baiduTempFiles.retryCount} + 1`,
-    updatedAt: new Date(),
-  }).where(eq(baiduTempFiles.id, tempId)).run()
+  db.update(baiduTempFiles)
+    .set({
+      status: code === 'TEMP_DELETE_NEEDS_VERIFY' ? 'delete_failed' : 'delete_pending',
+      errorMessage: message.slice(0, 300),
+      retryCount: sql`${baiduTempFiles.retryCount} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduTempFiles.id, tempId))
+    .run()
 }
 
 const markTempDeleted = (tempId: number) => {
-  db.update(baiduTempFiles).set({
-    status: 'deleted',
-    errorMessage: null,
-    deletedAt: new Date(),
-    updatedAt: new Date(),
-  }).where(eq(baiduTempFiles.id, tempId)).run()
+  db.update(baiduTempFiles)
+    .set({
+      status: 'deleted',
+      errorMessage: null,
+      deletedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduTempFiles.id, tempId))
+    .run()
 }
 
 const markTempDeletePending = (tempId: number, message: string) => {
-  db.update(baiduTempFiles).set({
-    status: 'delete_pending',
-    errorMessage: message,
-    updatedAt: new Date(),
-  }).where(eq(baiduTempFiles.id, tempId)).run()
+  db.update(baiduTempFiles)
+    .set({
+      status: 'delete_pending',
+      errorMessage: message,
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduTempFiles.id, tempId))
+    .run()
 }
 
-const tempPathStillExists = async (params: {
-  account: BaiduAccount
-  tempDir: string
-  path: string
-}) => {
+const tempPathStillExists = async (params: { account: BaiduAccount; tempDir: string; path: string }) => {
   if (params.account.credentialSource === 'open_platform' && params.account.accessToken) {
-    const tempDirExists = await client.diskPathExistsByAccessToken({
-      path: params.tempDir,
-      accessToken: params.account.accessToken,
-    }).catch(() => true)
+    const tempDirExists = await client
+      .diskPathExistsByAccessToken({
+        path: params.tempDir,
+        accessToken: params.account.accessToken,
+      })
+      .catch(() => true)
     if (tempDirExists) return true
     if (!params.path || params.path === params.tempDir) return false
-    return client.diskPathExistsByAccessToken({
-      path: params.path,
-      accessToken: params.account.accessToken,
-    }).catch(() => true)
+    return client
+      .diskPathExistsByAccessToken({
+        path: params.path,
+        accessToken: params.account.accessToken,
+      })
+      .catch(() => true)
   }
 
-  const tempDirExists = await client.diskPathExists({
-    path: params.tempDir,
-    cookie: params.account.cookie,
-  }).catch(() => true)
+  const tempDirExists = await client
+    .diskPathExists({
+      path: params.tempDir,
+      cookie: params.account.cookie,
+    })
+    .catch(() => true)
   if (tempDirExists) return true
   if (!params.path || params.path === params.tempDir) return false
-  return client.diskPathExists({
-    path: params.path,
-    cookie: params.account.cookie,
-  }).catch(() => true)
+  return client
+    .diskPathExists({
+      path: params.path,
+      cookie: params.account.cookie,
+    })
+    .catch(() => true)
 }
 
 const deleteTempPaths = async (params: {
@@ -816,7 +826,9 @@ const scheduleOpenPlatformTempCleanup = (params: {
 }
 
 const cleanupKnownTempFiles = async (account: BaiduAccount) => {
-  const pending = db.select().from(baiduTempFiles)
+  const pending = db
+    .select()
+    .from(baiduTempFiles)
     .where(or(eq(baiduTempFiles.status, 'active'), eq(baiduTempFiles.status, 'delete_pending')))
     .all()
     .filter((item) => item.accountId === account.id)
@@ -889,16 +901,17 @@ const parseTransfer = async (params: {
     message: '转存临时目录已就绪',
     details: { tempDir },
   })
-  const transfer = async () => client.saveToDiskWeb({
-    shareid: params.share.shareid,
-    fsIds: [params.file.fs_id],
-    uk: params.share.uk,
-    randsk: params.share.randsk,
-    referer: params.shareUrl,
-    cookie: params.account.cookie,
-    path: tempDir,
-    bdstoken,
-  })
+  const transfer = async () =>
+    client.saveToDiskWeb({
+      shareid: params.share.shareid,
+      fsIds: [params.file.fs_id],
+      uk: params.share.uk,
+      randsk: params.share.randsk,
+      referer: params.shareUrl,
+      cookie: params.account.cookie,
+      path: tempDir,
+      bdstoken,
+    })
 
   let saved = await transfer().catch(async (error) => {
     const info = appErrorInfo(error)
@@ -913,16 +926,18 @@ const parseTransfer = async (params: {
   const first = saved[0]
   if (!first?.to) throw upstreamError('SAVE_TO_DISK_FAILED', '转存成功但未返回目标路径')
 
-  db.insert(baiduTempFiles).values({
-    parseRecordId: params.recordId,
-    parseJobId: params.jobId,
-    accountId: params.account.id,
-    tempDir,
-    path: first.to,
-    fsId: String(first.to_fs_id ?? ''),
-    sizeBytes: params.file.size,
-    status: 'active',
-  }).run()
+  db.insert(baiduTempFiles)
+    .values({
+      parseRecordId: params.recordId,
+      parseJobId: params.jobId,
+      accountId: params.account.id,
+      tempDir,
+      path: first.to,
+      fsId: String(first.to_fs_id ?? ''),
+      sizeBytes: params.file.size,
+      status: 'active',
+    })
+    .run()
   const tempId = lastInsertId()
   recordParseEvent({
     type: 'saved_to_disk',
@@ -988,14 +1003,15 @@ const parseTransferOpenPlatform = async (params: {
         details: { tempDir },
       })
 
-      const transfer = async () => client.saveToDiskByAccessToken({
-        shareid: params.share.shareid,
-        fsIds: [params.file.fs_id],
-        uk: params.share.uk,
-        randsk: params.share.randsk,
-        path: tempDir,
-        accessToken,
-      })
+      const transfer = async () =>
+        client.saveToDiskByAccessToken({
+          shareid: params.share.shareid,
+          fsIds: [params.file.fs_id],
+          uk: params.share.uk,
+          randsk: params.share.randsk,
+          path: tempDir,
+          accessToken,
+        })
 
       const saved = await transfer().catch(async (error) => {
         const info = appErrorInfo(error)
@@ -1010,16 +1026,18 @@ const parseTransferOpenPlatform = async (params: {
       const first = saved[0]
       if (!first?.to) throw upstreamError('SAVE_TO_DISK_FAILED', '开放平台转存成功但未返回目标路径')
 
-      db.insert(baiduTempFiles).values({
-        parseRecordId: params.recordId,
-        parseJobId: params.jobId,
-        accountId: account.id,
-        tempDir,
-        path: first.to,
-        fsId: String(first.to_fs_id ?? ''),
-        sizeBytes: params.file.size,
-        status: 'active',
-      }).run()
+      db.insert(baiduTempFiles)
+        .values({
+          parseRecordId: params.recordId,
+          parseJobId: params.jobId,
+          accountId: account.id,
+          tempDir,
+          path: first.to,
+          fsId: String(first.to_fs_id ?? ''),
+          sizeBytes: params.file.size,
+          status: 'active',
+        })
+        .run()
       const tempId = lastInsertId()
 
       recordParseEvent({
@@ -1070,7 +1088,7 @@ const executeWithAccounts = async (params: {
   jobId?: number
   accountWait?: AccountWaitOptions
 }) => {
-  const attemptedFailures: Array<{ accountId: number, code: string, message: string }> = []
+  const attemptedFailures: Array<{ accountId: number; code: string; message: string }> = []
   const preferDirect = params.file.size <= directFirstMaxBytes
   let attempts = 0
   let lastAccountWaitEventAt = 0
@@ -1139,7 +1157,7 @@ const executeWithAccounts = async (params: {
         message: `锁定账号 ${account.id}，开始第 ${attempts} 次尝试`,
         details: { attempt: attempts, credentialSource, preferredRoute: parseRoute },
       })
-      let parsed: { url: string, md5?: string, tempId?: number }
+      let parsed: { url: string; md5?: string; tempId?: number }
       try {
         if (parseRoute === 'sharedownload') {
           parsed = await parseDirect({ share: params.share, file: params.file, account, jobId: params.jobId })
@@ -1160,9 +1178,10 @@ const executeWithAccounts = async (params: {
             code: info.code,
             message: '直链路线不可用，切换到转存路线',
           })
-          parsed = credentialSource === 'open_platform'
-            ? await parseTransferOpenPlatform({ jobId: params.jobId, share: params.share, file: params.file, account })
-            : await parseTransfer({ jobId: params.jobId, share: params.share, file: params.file, account, shareUrl: params.shareUrl })
+          parsed =
+            credentialSource === 'open_platform'
+              ? await parseTransferOpenPlatform({ jobId: params.jobId, share: params.share, file: params.file, account })
+              : await parseTransfer({ jobId: params.jobId, share: params.share, file: params.file, account, shareUrl: params.shareUrl })
         } else {
           throw error
         }
@@ -1189,10 +1208,13 @@ const executeWithAccounts = async (params: {
         attemptCount: attempts,
       })
       if (parsed.tempId) {
-        db.update(baiduTempFiles).set({
-          parseRecordId: recordId,
-          updatedAt: new Date(),
-        }).where(eq(baiduTempFiles.id, parsed.tempId)).run()
+        db.update(baiduTempFiles)
+          .set({
+            parseRecordId: recordId,
+            updatedAt: new Date(),
+          })
+          .where(eq(baiduTempFiles.id, parsed.tempId))
+          .run()
       }
       attachExecutionArtifacts(recordId, params.jobId)
       markAccountSuccess(account.id, { parseJobId: params.jobId, parseRecordId: recordId })
@@ -1333,9 +1355,13 @@ export const parseLinks = async (input: ParseInput, user?: User) => {
   return [toParsedLink(result)]
 }
 
-export const parseLinksForBroker = async (input: ParseInput, user: User, options: {
-  accountWait?: AccountWaitOptions
-}) => {
+export const parseLinksForBroker = async (
+  input: ParseInput,
+  user: User,
+  options: {
+    accountWait?: AccountWaitOptions
+  },
+) => {
   const result = await executeParse({
     user,
     shareUrl: input.shareUrl,
@@ -1360,9 +1386,12 @@ const toParsedLink = (result: ParseExecutionResult): ParsedLink & Record<string,
   link_expires_at: result.linkExpiresAt.toISOString(),
 })
 
-const resolveDiskRecord = async (account: BaiduAccount, input: {
-  path: string
-}) => {
+const resolveDiskRecord = async (
+  account: BaiduAccount,
+  input: {
+    path: string
+  },
+) => {
   const download = getDownloadSettings()
   const linkExpiresAt = new Date(Date.now() + download.linkCacheTtlSeconds * 1000)
   if (account.credentialSource === 'open_platform') {
@@ -1403,38 +1432,42 @@ const insertDiskReparseJob = (input: {
     sizeBytes: record.sizeBytes,
     sourceRecordId: record.id,
   }
-  db.insert(parseRecords).values({
-    userId: user.id,
-    accountId: account.id,
-    accountOwnerUserId: account.ownerUserId ?? user.id,
-    shareSurl: `disk:${account.id}`,
-    shareUrl: `disk://${account.id}${path}`,
-    pwd: null,
-    dir: parentDirOfPath(path),
-    fsId: record.fsId,
-    filename: record.filename,
-    sizeBytes: record.sizeBytes,
-    md5: record.md5,
-    status: 'success',
-    route: 'disk',
-    credentialSource: account.credentialSource,
-    parseRoute: null,
-    resultUrl: result.url,
-    resultUa: result.ua,
-    linkExpiresAt: result.linkExpiresAt,
-    errorCode: null,
-    errorMessage: null,
-    attemptCount: 1,
-  }).run()
+  db.insert(parseRecords)
+    .values({
+      userId: user.id,
+      accountId: account.id,
+      accountOwnerUserId: account.ownerUserId ?? user.id,
+      shareSurl: `disk:${account.id}`,
+      shareUrl: `disk://${account.id}${path}`,
+      pwd: null,
+      dir: parentDirOfPath(path),
+      fsId: record.fsId,
+      filename: record.filename,
+      sizeBytes: record.sizeBytes,
+      md5: record.md5,
+      status: 'success',
+      route: 'disk',
+      credentialSource: account.credentialSource,
+      parseRoute: null,
+      resultUrl: result.url,
+      resultUa: result.ua,
+      linkExpiresAt: result.linkExpiresAt,
+      errorCode: null,
+      errorMessage: null,
+      attemptCount: 1,
+    })
+    .run()
   const recordId = lastInsertId()
-  db.insert(parseAttempts).values({
-    parseRecordId: recordId,
-    userId: user.id,
-    accountId: account.id,
-    fsId: record.fsId,
-    status: 'success',
-    message: 'disk reparse success',
-  }).run()
+  db.insert(parseAttempts)
+    .values({
+      parseRecordId: recordId,
+      userId: user.id,
+      accountId: account.id,
+      fsId: record.fsId,
+      status: 'success',
+      message: 'disk reparse success',
+    })
+    .run()
   recordParseEvent({
     type: 'disk_reparse_started',
     recordId,
@@ -1451,29 +1484,31 @@ const insertDiskReparseJob = (input: {
     message: '网盘历史重新解析成功',
     details,
   })
-  db.insert(parseJobs).values({
-    userId: user.id,
-    parseRecordId: recordId,
-    accountId: account.id,
-    shareUrl: `disk://${account.id}${path}`,
-    shareSurl: `disk:${account.id}`,
-    pwd: null,
-    dir: parentDirOfPath(path),
-    fsId: record.fsId,
-    filename: record.filename,
-    sizeBytes: record.sizeBytes,
-    md5: record.md5,
-    status: 'success',
-    queueSeq: nextQueueSeq(),
-    route: 'disk',
-    credentialSource: account.credentialSource,
-    parseRoute: null,
-    accountOwnerUserId: account.ownerUserId ?? user.id,
-    resultUrl: result.url,
-    resultUa: result.ua,
-    linkExpiresAt: result.linkExpiresAt,
-    finishedAt: new Date(),
-  }).run()
+  db.insert(parseJobs)
+    .values({
+      userId: user.id,
+      parseRecordId: recordId,
+      accountId: account.id,
+      shareUrl: `disk://${account.id}${path}`,
+      shareSurl: `disk:${account.id}`,
+      pwd: null,
+      dir: parentDirOfPath(path),
+      fsId: record.fsId,
+      filename: record.filename,
+      sizeBytes: record.sizeBytes,
+      md5: record.md5,
+      status: 'success',
+      queueSeq: nextQueueSeq(),
+      route: 'disk',
+      credentialSource: account.credentialSource,
+      parseRoute: null,
+      accountOwnerUserId: account.ownerUserId ?? user.id,
+      resultUrl: result.url,
+      resultUa: result.ua,
+      linkExpiresAt: result.linkExpiresAt,
+      finishedAt: new Date(),
+    })
+    .run()
   const job = db.select().from(parseJobs).where(eq(parseJobs.id, lastInsertId())).get()
   if (!job) throw upstreamError('JOB_CREATE_FAILED', '任务创建失败')
   recordParseEvent({
@@ -1497,29 +1532,31 @@ const insertSuccessfulJob = (input: {
   file: ShareFile
   result: ParseExecutionResult
 }) => {
-  db.insert(parseJobs).values({
-    userId: input.user.id,
-    parseRecordId: input.result.recordId,
-    accountId: input.result.accountId ?? null,
-    shareUrl: input.shareUrl,
-    shareSurl: input.surl,
-    pwd: input.pwd,
-    dir: input.dir ?? '/',
-    fsId: String(input.file.fs_id),
-    filename: input.file.server_filename,
-    sizeBytes: input.file.size,
-    md5: input.result.md5 ?? input.file.md5,
-    status: 'success',
-    queueSeq: nextQueueSeq(),
-    route: input.result.parseRoute,
-    credentialSource: input.result.credentialSource,
-    parseRoute: input.result.parseRoute,
-    accountOwnerUserId: input.result.accountOwnerUserId ?? null,
-    resultUrl: input.result.url,
-    resultUa: input.result.ua,
-    linkExpiresAt: input.result.linkExpiresAt,
-    finishedAt: new Date(),
-  }).run()
+  db.insert(parseJobs)
+    .values({
+      userId: input.user.id,
+      parseRecordId: input.result.recordId,
+      accountId: input.result.accountId ?? null,
+      shareUrl: input.shareUrl,
+      shareSurl: input.surl,
+      pwd: input.pwd,
+      dir: input.dir ?? '/',
+      fsId: String(input.file.fs_id),
+      filename: input.file.server_filename,
+      sizeBytes: input.file.size,
+      md5: input.result.md5 ?? input.file.md5,
+      status: 'success',
+      queueSeq: nextQueueSeq(),
+      route: input.result.parseRoute,
+      credentialSource: input.result.credentialSource,
+      parseRoute: input.result.parseRoute,
+      accountOwnerUserId: input.result.accountOwnerUserId ?? null,
+      resultUrl: input.result.url,
+      resultUa: input.result.ua,
+      linkExpiresAt: input.result.linkExpiresAt,
+      finishedAt: new Date(),
+    })
+    .run()
   const job = db.select().from(parseJobs).where(eq(parseJobs.id, lastInsertId())).get()
   if (!job) throw upstreamError('JOB_CREATE_FAILED', '任务创建失败')
   recordParseEvent({
@@ -1545,23 +1582,25 @@ const insertFailedJob = (input: {
   code: string
   message: string
 }) => {
-  db.insert(parseJobs).values({
-    userId: input.user.id,
-    parseRecordId: input.recordId,
-    shareUrl: input.shareUrl,
-    shareSurl: input.surl,
-    pwd: input.pwd,
-    dir: input.dir ?? '/',
-    fsId: String(input.file.fs_id),
-    filename: input.file.server_filename,
-    sizeBytes: input.file.size,
-    md5: input.file.md5,
-    status: 'failed',
-    queueSeq: nextQueueSeq(),
-    errorCode: input.code,
-    errorMessage: input.message,
-    finishedAt: new Date(),
-  }).run()
+  db.insert(parseJobs)
+    .values({
+      userId: input.user.id,
+      parseRecordId: input.recordId,
+      shareUrl: input.shareUrl,
+      shareSurl: input.surl,
+      pwd: input.pwd,
+      dir: input.dir ?? '/',
+      fsId: String(input.file.fs_id),
+      filename: input.file.server_filename,
+      sizeBytes: input.file.size,
+      md5: input.file.md5,
+      status: 'failed',
+      queueSeq: nextQueueSeq(),
+      errorCode: input.code,
+      errorMessage: input.message,
+      finishedAt: new Date(),
+    })
+    .run()
   const job = db.select().from(parseJobs).where(eq(parseJobs.id, lastInsertId())).get()
   if (!job) throw upstreamError('JOB_CREATE_FAILED', '任务创建失败')
   recordParseEvent({
@@ -1588,19 +1627,21 @@ export const submitParseJob = async (input: ParseInput, user?: User) => {
   })
   const file = validateSingleFile(share.list, fsIds)
 
-  db.insert(parseJobs).values({
-    userId: user.id,
-    shareUrl: input.shareUrl,
-    shareSurl: surl,
-    pwd,
-    dir: input.dir ?? '/',
-    fsId: String(file.fs_id),
-    filename: file.server_filename,
-    sizeBytes: file.size,
-    md5: file.md5,
-    status: 'queued',
-    queueSeq: nextQueueSeq(),
-  }).run()
+  db.insert(parseJobs)
+    .values({
+      userId: user.id,
+      shareUrl: input.shareUrl,
+      shareSurl: surl,
+      pwd,
+      dir: input.dir ?? '/',
+      fsId: String(file.fs_id),
+      filename: file.server_filename,
+      sizeBytes: file.size,
+      md5: file.md5,
+      status: 'queued',
+      queueSeq: nextQueueSeq(),
+    })
+    .run()
   const job = db.select().from(parseJobs).where(eq(parseJobs.id, lastInsertId())).get()
   if (!job) throw upstreamError('JOB_CREATE_FAILED', '任务创建失败')
   recordParseEvent({
@@ -1617,7 +1658,9 @@ let processing = false
 
 export const hasActiveParseJobs = () => {
   if (processing) return true
-  const row = db.select({ value: sql<number>`COUNT(*)` }).from(parseJobs)
+  const row = db
+    .select({ value: sql<number>`COUNT(*)` })
+    .from(parseJobs)
     .where(or(eq(parseJobs.status, 'queued'), eq(parseJobs.status, 'running')))
     .get()
   return Number(row?.value ?? 0) > 0
@@ -1628,17 +1671,17 @@ const processNextJob = async () => {
   processing = true
   try {
     while (true) {
-      const job = db.select().from(parseJobs)
-        .where(eq(parseJobs.status, 'queued'))
-        .orderBy(sql`${parseJobs.queueSeq} ASC`)
-        .get()
+      const job = db.select().from(parseJobs).where(eq(parseJobs.status, 'queued')).orderBy(sql`${parseJobs.queueSeq} ASC`).get()
       if (!job) return
 
-      db.update(parseJobs).set({
-        status: 'running',
-        startedAt: new Date(),
-        updatedAt: new Date(),
-      }).where(eq(parseJobs.id, job.id)).run()
+      db.update(parseJobs)
+        .set({
+          status: 'running',
+          startedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(parseJobs.id, job.id))
+        .run()
       recordParseEvent({
         type: 'job_started',
         jobId: job.id,
@@ -1648,13 +1691,16 @@ const processNextJob = async () => {
 
       const typedUser = db.select().from(users).where(eq(users.id, job.userId)).get()
       if (!typedUser) {
-        db.update(parseJobs).set({
-          status: 'failed',
-          errorCode: 'USER_NOT_FOUND',
-          errorMessage: '用户不存在',
-          finishedAt: new Date(),
-          updatedAt: new Date(),
-        }).where(eq(parseJobs.id, job.id)).run()
+        db.update(parseJobs)
+          .set({
+            status: 'failed',
+            errorCode: 'USER_NOT_FOUND',
+            errorMessage: '用户不存在',
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(parseJobs.id, job.id))
+          .run()
         recordParseEvent({
           type: 'job_failed',
           jobId: job.id,
@@ -1674,31 +1720,37 @@ const processNextJob = async () => {
           fsIds: [Number(job.fsId)],
           jobId: job.id,
         })
-        db.update(parseJobs).set({
-          status: 'success',
-          parseRecordId: result.recordId,
-          accountId: result.accountId ?? null,
-          route: result.parseRoute,
-          credentialSource: result.credentialSource,
-          parseRoute: result.parseRoute,
-          accountOwnerUserId: result.accountOwnerUserId ?? null,
-          resultUrl: result.url,
-          resultUa: result.ua,
-          linkExpiresAt: result.linkExpiresAt,
-          finishedAt: new Date(),
-          updatedAt: new Date(),
-        }).where(eq(parseJobs.id, job.id)).run()
+        db.update(parseJobs)
+          .set({
+            status: 'success',
+            parseRecordId: result.recordId,
+            accountId: result.accountId ?? null,
+            route: result.parseRoute,
+            credentialSource: result.credentialSource,
+            parseRoute: result.parseRoute,
+            accountOwnerUserId: result.accountOwnerUserId ?? null,
+            resultUrl: result.url,
+            resultUa: result.ua,
+            linkExpiresAt: result.linkExpiresAt,
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(parseJobs.id, job.id))
+          .run()
       } catch (error) {
         const info = appErrorInfo(error)
         const recordId = typeof error === 'object' && error !== null && 'recordId' in error && typeof error.recordId === 'number' ? error.recordId : null
-        db.update(parseJobs).set({
-          status: 'failed',
-          parseRecordId: recordId,
-          errorCode: info.code,
-          errorMessage: info.message,
-          finishedAt: new Date(),
-          updatedAt: new Date(),
-        }).where(eq(parseJobs.id, job.id)).run()
+        db.update(parseJobs)
+          .set({
+            status: 'failed',
+            parseRecordId: recordId,
+            errorCode: info.code,
+            errorMessage: info.message,
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(parseJobs.id, job.id))
+          .run()
         recordParseEvent({
           type: 'job_failed',
           jobId: job.id,
@@ -1722,14 +1774,17 @@ export const getParseJob = (id: number, user?: User) => {
   return serializeJob(job)
 }
 
-export const listParseHistory = (input: {
-  status?: string
-  credentialSource?: string
-  parseRoute?: string
-  q?: string
-  page?: number
-  pageSize?: number
-}, user?: User) => {
+export const listParseHistory = (
+  input: {
+    status?: string
+    credentialSource?: string
+    parseRoute?: string
+    q?: string
+    page?: number
+    pageSize?: number
+  },
+  user?: User,
+) => {
   if (!user) throw badRequest('LOGIN_REQUIRED', '请先登录')
   const page = Math.max(1, Number(input.page ?? 1))
   const pageSize = Math.min(100, Math.max(1, Number(input.pageSize ?? 20)))
@@ -1749,7 +1804,9 @@ export const listParseHistory = (input: {
   }
   const where = and(...filters)
   const [{ value: total }] = db.select({ value: sql<number>`COUNT(*)` }).from(parseRecords).where(where).all()
-  const records = db.select().from(parseRecords)
+  const records = db
+    .select()
+    .from(parseRecords)
     .where(where)
     .orderBy(desc(parseRecords.id))
     .limit(pageSize)
@@ -1771,15 +1828,14 @@ export const getParseHistoryDetail = (id: number, user?: User) => {
   const record = db.select().from(parseRecords).where(eq(parseRecords.id, id)).get()
   if (!record) throw notFound('HISTORY_NOT_FOUND', '解析记录不存在')
   if (record.userId !== user.id && !user.isAdmin) throw forbidden('HISTORY_FORBIDDEN', '无权查看该记录')
-  const events = db.select().from(parseEvents)
+  const events = db
+    .select()
+    .from(parseEvents)
     .where(eq(parseEvents.parseRecordId, id))
     .orderBy(asc(parseEvents.createdAt), asc(parseEvents.id))
     .all()
     .map(serializeEvent)
-  const attempts = db.select().from(parseAttempts)
-    .where(eq(parseAttempts.parseRecordId, id))
-    .orderBy(asc(parseAttempts.createdAt), asc(parseAttempts.id))
-    .all()
+  const attempts = db.select().from(parseAttempts).where(eq(parseAttempts.parseRecordId, id)).orderBy(asc(parseAttempts.createdAt), asc(parseAttempts.id)).all()
   return {
     record: serializeRecord(record),
     events,
@@ -1810,9 +1866,7 @@ export const reparseHistory = async (id: number, user?: User) => {
       const result = await resolveDiskRecord(account, { path })
       return insertDiskReparseJob({ user, record, account, path, result, startedAt })
     } catch (error) {
-      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
-        ? error.code
-        : 'DISK_REPARSE_FAILED'
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'DISK_REPARSE_FAILED'
       const message = error instanceof Error ? error.message : String(error)
       const details = {
         accountId: account.id,
@@ -1823,39 +1877,43 @@ export const reparseHistory = async (id: number, user?: User) => {
         sizeBytes: record.sizeBytes,
         sourceRecordId: record.id,
       }
-      db.insert(parseRecords).values({
-        userId: user.id,
-        accountId: account.id,
-        accountOwnerUserId: account.ownerUserId ?? user.id,
-        shareSurl: `disk:${account.id}`,
-        shareUrl: `disk://${account.id}${path}`,
-        pwd: null,
-        dir: parentDirOfPath(path),
-        fsId: record.fsId,
-        filename: record.filename,
-        sizeBytes: record.sizeBytes,
-        md5: record.md5,
-        status: 'failed',
-        route: 'disk',
-        credentialSource: account.credentialSource,
-        parseRoute: null,
-        resultUrl: null,
-        resultUa: null,
-        linkExpiresAt: null,
-        errorCode: code,
-        errorMessage: message,
-        attemptCount: 1,
-      }).run()
+      db.insert(parseRecords)
+        .values({
+          userId: user.id,
+          accountId: account.id,
+          accountOwnerUserId: account.ownerUserId ?? user.id,
+          shareSurl: `disk:${account.id}`,
+          shareUrl: `disk://${account.id}${path}`,
+          pwd: null,
+          dir: parentDirOfPath(path),
+          fsId: record.fsId,
+          filename: record.filename,
+          sizeBytes: record.sizeBytes,
+          md5: record.md5,
+          status: 'failed',
+          route: 'disk',
+          credentialSource: account.credentialSource,
+          parseRoute: null,
+          resultUrl: null,
+          resultUa: null,
+          linkExpiresAt: null,
+          errorCode: code,
+          errorMessage: message,
+          attemptCount: 1,
+        })
+        .run()
       const recordId = lastInsertId()
-      db.insert(parseAttempts).values({
-        parseRecordId: recordId,
-        userId: user.id,
-        accountId: account.id,
-        fsId: record.fsId,
-        status: 'failed',
-        errorCode: code,
-        message,
-      }).run()
+      db.insert(parseAttempts)
+        .values({
+          parseRecordId: recordId,
+          userId: user.id,
+          accountId: account.id,
+          fsId: record.fsId,
+          status: 'failed',
+          errorCode: code,
+          message,
+        })
+        .run()
       recordParseEvent({
         type: 'disk_reparse_started',
         recordId,
@@ -1876,12 +1934,15 @@ export const reparseHistory = async (id: number, user?: User) => {
       throw error
     }
   }
-  return submitParseJob({
-    shareUrl: record.shareUrl || `https://pan.baidu.com/s/1${record.shareSurl}`,
-    pwd: record.pwd ?? undefined,
-    dir: record.dir ?? undefined,
-    fsIds: [Number(record.fsId)],
-  }, user)
+  return submitParseJob(
+    {
+      shareUrl: record.shareUrl || `https://pan.baidu.com/s/1${record.shareSurl}`,
+      pwd: record.pwd ?? undefined,
+      dir: record.dir ?? undefined,
+      fsIds: [Number(record.fsId)],
+    },
+    user,
+  )
 }
 
 export const retryPendingDeletes = async () => {
@@ -1893,27 +1954,27 @@ export const retryPendingDeletes = async () => {
       errorMessage: '历史遗留临时文件，等待后台重试清理',
       updatedAt: new Date(),
     })
-    .where(and(
-      eq(baiduTempFiles.status, 'active'),
-      or(
-        and(
-          sql`${baiduTempFiles.parseJobId} IS NULL`,
-          sql`${baiduTempFiles.createdAt} < ${staleActiveCutoff}`,
-        ),
-        sql`${baiduTempFiles.parseJobId} IN (SELECT id FROM parse_jobs WHERE status IN ('success', 'failed', 'canceled'))`,
-      )!,
-    ))
+    .where(
+      and(
+        eq(baiduTempFiles.status, 'active'),
+        or(
+          and(sql`${baiduTempFiles.parseJobId} IS NULL`, sql`${baiduTempFiles.createdAt} < ${staleActiveCutoff}`),
+          sql`${baiduTempFiles.parseJobId} IN (SELECT id FROM parse_jobs WHERE status IN ('success', 'failed', 'canceled'))`,
+        )!,
+      ),
+    )
     .run()
 
-  const pending = db.select().from(baiduTempFiles)
-    .where(eq(baiduTempFiles.status, 'delete_pending'))
-    .limit(20)
-    .all()
+  const pending = db.select().from(baiduTempFiles).where(eq(baiduTempFiles.status, 'delete_pending')).limit(20).all()
   for (const item of pending) {
     if (item.accountId) {
-      const accountMeta = db.select({
-        credentialSource: baiduAccounts.credentialSource,
-      }).from(baiduAccounts).where(eq(baiduAccounts.id, item.accountId)).get()
+      const accountMeta = db
+        .select({
+          credentialSource: baiduAccounts.credentialSource,
+        })
+        .from(baiduAccounts)
+        .where(eq(baiduAccounts.id, item.accountId))
+        .get()
       if (accountMeta?.credentialSource === 'open_platform' && item.createdAt.getTime() > openPlatformDeleteCutoff) {
         continue
       }

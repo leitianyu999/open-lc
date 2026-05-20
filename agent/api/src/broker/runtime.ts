@@ -4,7 +4,16 @@ import { parseLinksForBroker } from '../baidu/service'
 import { appSettings, baiduAccounts, brokerRunEvents, brokerRuns, type BaiduAccount, type BrokerRun } from '../db/schema'
 import { ensureSystemUser } from '../localUser'
 import { badRequest, upstreamError } from '../lib/errors'
-import { getParseLimits, getSettingBoolean, getSettingNumber, getSettingString, getSettingWithSource, readSettingRaw, settingKeys, setSetting } from '../settings/service'
+import {
+  getParseLimits,
+  getSettingBoolean,
+  getSettingNumber,
+  getSettingString,
+  getSettingWithSource,
+  readSettingRaw,
+  settingKeys,
+  setSetting,
+} from '../settings/service'
 import { agentClientVersion } from '../version'
 
 export type BrokerConfig = {
@@ -101,14 +110,7 @@ const brokerConfigKey = 'agent_broker_config'
 const legacyBrokerRunsKey = 'agent_broker_runs'
 const maxAllowedConcurrentRuns = 5
 const activeRunStatuses: BrokerRunStatus[] = ['idle', 'polling', 'participating', 'waiting', 'active', 'parsing', 'submitting']
-const terminalStatuses = new Set<BrokerRunStatus>([
-  'success',
-  'failed',
-  'not_selected',
-  'expired',
-  'submitted_success',
-  'submitted_failure',
-])
+const terminalStatuses = new Set<BrokerRunStatus>(['success', 'failed', 'not_selected', 'expired', 'submitted_success', 'submitted_failure'])
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -130,16 +132,19 @@ const queryJson = <T>(key: string, fallback: T): T => {
 }
 
 const setJson = (key: string, value: unknown) => {
-  db.insert(appSettings).values({
-    key,
-    value: JSON.stringify(value),
-  }).onConflictDoUpdate({
-    target: appSettings.key,
-    set: {
+  db.insert(appSettings)
+    .values({
+      key,
       value: JSON.stringify(value),
-      updatedAt: new Date(),
-    },
-  }).run()
+    })
+    .onConflictDoUpdate({
+      target: appSettings.key,
+      set: {
+        value: JSON.stringify(value),
+        updatedAt: new Date(),
+      },
+    })
+    .run()
 }
 
 const clampSeconds = (value: unknown, fallback: number, min: number, max: number) => {
@@ -211,21 +216,14 @@ const normalizeBrokerConfig = (configValue: LegacyBrokerConfig): BrokerConfig =>
     pollIntervalSeconds: clampSeconds(fallback.pollIntervalSeconds, fallback.pollIntervalSeconds, 3, 3600),
     maxConcurrentRuns: clampConcurrentRuns(fallback.maxConcurrentRuns, fallback.maxConcurrentRuns),
     lastHeartbeatAt: typeof configValue.lastHeartbeatAt === 'string' ? configValue.lastHeartbeatAt : null,
-    lastHeartbeatStatus: configValue.lastHeartbeatStatus === 'ok' || configValue.lastHeartbeatStatus === 'failed'
-      ? configValue.lastHeartbeatStatus
-      : fallback.lastHeartbeatStatus,
-    lastHeartbeatHttpStatus: Number.isFinite(Number(configValue.lastHeartbeatHttpStatus))
-      ? Number(configValue.lastHeartbeatHttpStatus)
-      : null,
+    lastHeartbeatStatus:
+      configValue.lastHeartbeatStatus === 'ok' || configValue.lastHeartbeatStatus === 'failed' ? configValue.lastHeartbeatStatus : fallback.lastHeartbeatStatus,
+    lastHeartbeatHttpStatus: Number.isFinite(Number(configValue.lastHeartbeatHttpStatus)) ? Number(configValue.lastHeartbeatHttpStatus) : null,
     lastHeartbeatErrorCode: typeof configValue.lastHeartbeatErrorCode === 'string' ? configValue.lastHeartbeatErrorCode : null,
     lastHeartbeatErrorMessage: typeof configValue.lastHeartbeatErrorMessage === 'string' ? configValue.lastHeartbeatErrorMessage : null,
     lastPollAt: typeof configValue.lastPollAt === 'string' ? configValue.lastPollAt : null,
-    lastPollStatus: configValue.lastPollStatus === 'ok' || configValue.lastPollStatus === 'failed'
-      ? configValue.lastPollStatus
-      : fallback.lastPollStatus,
-    lastPollHttpStatus: Number.isFinite(Number(configValue.lastPollHttpStatus))
-      ? Number(configValue.lastPollHttpStatus)
-      : null,
+    lastPollStatus: configValue.lastPollStatus === 'ok' || configValue.lastPollStatus === 'failed' ? configValue.lastPollStatus : fallback.lastPollStatus,
+    lastPollHttpStatus: Number.isFinite(Number(configValue.lastPollHttpStatus)) ? Number(configValue.lastPollHttpStatus) : null,
     lastPollErrorCode: typeof configValue.lastPollErrorCode === 'string' ? configValue.lastPollErrorCode : null,
     lastPollErrorMessage: typeof configValue.lastPollErrorMessage === 'string' ? configValue.lastPollErrorMessage : null,
     lastRequestBaseUrl: typeof configValue.lastRequestBaseUrl === 'string' ? configValue.lastRequestBaseUrl : null,
@@ -295,17 +293,16 @@ const brokerHeaders = (configValue: BrokerConfig) => ({
   'Content-Type': 'application/json',
 })
 
-const requestBrokerJson = async <T>(path: string, options: {
-  method?: 'GET' | 'POST'
-  body?: unknown
-}) => {
+const requestBrokerJson = async <T>(
+  path: string,
+  options: {
+    method?: 'GET' | 'POST'
+    body?: unknown
+  },
+) => {
   const broker = getBrokerConfig()
   if (!broker.baseUrl || !broker.agentToken || !broker.enabled) {
-    const reason = !broker.baseUrl
-      ? 'Broker Base URL 未配置'
-      : !broker.agentToken
-        ? 'Agent Token 未配置'
-        : 'Broker 执行未启用'
+    const reason = !broker.baseUrl ? 'Broker Base URL 未配置' : !broker.agentToken ? 'Agent Token 未配置' : 'Broker 执行未启用'
     throw badRequest('BROKER_NOT_CONFIGURED', reason, {
       targetUrl: broker.baseUrl || null,
       httpStatus: null,
@@ -317,7 +314,7 @@ const requestBrokerJson = async <T>(path: string, options: {
     headers: brokerHeaders(broker),
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   })
-  const json = await response.json().catch(() => null) as Record<string, unknown> | null
+  const json = (await response.json().catch(() => null)) as Record<string, unknown> | null
   if (!response.ok) {
     const error = upstreamError(
       typeof json?.code === 'string' ? json.code : 'BROKER_REQUEST_FAILED',
@@ -338,12 +335,9 @@ const appErrorInfo = (error: unknown) => {
     const code = 'code' in error && typeof error.code === 'string' ? error.code : null
     const message = 'message' in error && typeof error.message === 'string' ? error.message : null
     const details = 'details' in error ? error.details : undefined
-    const httpStatus = details && typeof details === 'object' && details !== null && 'httpStatus' in details
-      ? Number(details.httpStatus)
-      : null
-    const targetUrl = details && typeof details === 'object' && details !== null && 'targetUrl' in details && typeof details.targetUrl === 'string'
-      ? details.targetUrl
-      : null
+    const httpStatus = details && typeof details === 'object' && details !== null && 'httpStatus' in details ? Number(details.httpStatus) : null
+    const targetUrl =
+      details && typeof details === 'object' && details !== null && 'targetUrl' in details && typeof details.targetUrl === 'string' ? details.targetUrl : null
     if (code || message) {
       return {
         code: code ?? 'UNKNOWN_ERROR',
@@ -373,43 +367,46 @@ const runFailureCode = (code: string, message: string) => {
   return mapFailureCode(code, message)
 }
 
-const serializeDetails = (details?: Record<string, unknown> | null) => details ? JSON.stringify(details) : null
+const serializeDetails = (details?: Record<string, unknown> | null) => (details ? JSON.stringify(details) : null)
 
 const recordBrokerEvent = (input: RuntimeEventInput) => {
   if (maintenanceStopping) return
-  db.insert(brokerRunEvents).values({
-    runId: input.runId ?? null,
-    taskId: input.taskId ?? null,
-    participationId: input.participationId ?? null,
-    type: input.type,
-    status: input.status ?? 'info',
-    code: input.code ?? null,
-    message: input.message,
-    details: serializeDetails(input.details),
-  }).run()
+  db.insert(brokerRunEvents)
+    .values({
+      runId: input.runId ?? null,
+      taskId: input.taskId ?? null,
+      participationId: input.participationId ?? null,
+      type: input.type,
+      status: input.status ?? 'info',
+      code: input.code ?? null,
+      message: input.message,
+      details: serializeDetails(input.details),
+    })
+    .run()
 }
 
 const activeRunCondition = () => inArray(brokerRuns.status, activeRunStatuses)
 
-const activeRuns = () => db.select().from(brokerRuns)
-  .where(activeRunCondition())
-  .orderBy(desc(brokerRuns.updatedAt))
-  .all()
+const activeRuns = () => db.select().from(brokerRuns).where(activeRunCondition()).orderBy(desc(brokerRuns.updatedAt)).all()
 
 const countActiveRuns = () => {
-  const [row] = db.select({ value: sql<number>`COUNT(*)` }).from(brokerRuns)
-    .where(activeRunCondition())
-    .all()
+  const [row] = db.select({ value: sql<number>`COUNT(*)` }).from(brokerRuns).where(activeRunCondition()).all()
   return Number(row.value)
 }
 
-const findActiveRunForTask = (taskId: string) => db.select().from(brokerRuns)
-  .where(and(eq(brokerRuns.taskId, taskId), activeRunCondition()))
-  .get()
+const findActiveRunForTask = (taskId: string) =>
+  db
+    .select()
+    .from(brokerRuns)
+    .where(and(eq(brokerRuns.taskId, taskId), activeRunCondition()))
+    .get()
 
-const findActiveRunForParticipation = (participationId: string) => db.select().from(brokerRuns)
-  .where(and(eq(brokerRuns.participationId, participationId), activeRunCondition()))
-  .get()
+const findActiveRunForParticipation = (participationId: string) =>
+  db
+    .select()
+    .from(brokerRuns)
+    .where(and(eq(brokerRuns.participationId, participationId), activeRunCondition()))
+    .get()
 
 const normalizeStatus = (status: string): BrokerRunStatus => {
   if (status === 'SUBMITTED_SUCCESS') return 'submitted_success'
@@ -422,10 +419,13 @@ const normalizeStatus = (status: string): BrokerRunStatus => {
 }
 
 const updateRun = (runId: string, patch: Partial<BrokerRun>) => {
-  db.update(brokerRuns).set({
-    ...patch,
-    updatedAt: new Date(),
-  }).where(eq(brokerRuns.id, runId)).run()
+  db.update(brokerRuns)
+    .set({
+      ...patch,
+      updatedAt: new Date(),
+    })
+    .where(eq(brokerRuns.id, runId))
+    .run()
 }
 
 const finishRun = (runId: string, patch: Partial<BrokerRun> & { status: BrokerRunStatus }) => {
@@ -438,16 +438,18 @@ const finishRun = (runId: string, patch: Partial<BrokerRun> & { status: BrokerRu
 const createRun = (taskId: string, participation?: BrokerParticipation) => {
   const now = new Date()
   const runId = crypto.randomUUID()
-  db.insert(brokerRuns).values({
-    id: runId,
-    taskId,
-    participationId: participation?.participation_id ?? null,
-    status: participation ? 'participating' : 'idle',
-    message: participation ? '已参与任务，等待激活' : '准备参与任务',
-    startedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  }).run()
+  db.insert(brokerRuns)
+    .values({
+      id: runId,
+      taskId,
+      participationId: participation?.participation_id ?? null,
+      status: participation ? 'participating' : 'idle',
+      message: participation ? '已参与任务，等待激活' : '准备参与任务',
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
   recordBrokerEvent({
     runId,
     taskId,
@@ -476,8 +478,7 @@ const setRunParticipation = (runId: string, participation: BrokerParticipation) 
   })
 }
 
-const nextPollAt = (seconds?: number) =>
-  new Date(Date.now() + Math.max(1, Number(seconds ?? 2)) * 1000)
+const nextPollAt = (seconds?: number) => new Date(Date.now() + Math.max(1, Number(seconds ?? 2)) * 1000)
 
 const sleepUntil = async (date: Date | null) => {
   if (!date) return
@@ -492,11 +493,10 @@ const parseIsoDate = (value?: string) => {
 }
 
 const buildCapabilities = () => {
-  const accounts = db.select().from(baiduAccounts)
-    .where(and(
-      eq(baiduAccounts.status, 'active'),
-      or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, new Date())),
-    ))
+  const accounts = db
+    .select()
+    .from(baiduAccounts)
+    .where(and(eq(baiduAccounts.status, 'active'), or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, new Date()))))
     .all()
 
   return {
@@ -599,7 +599,7 @@ const submitSuccess = async (participationId: string, first: Record<string, unkn
     method: 'POST',
     body: {
       type: 'success',
-      result_url: String(Array.isArray(first.urls) ? first.urls[0] ?? '' : ''),
+      result_url: String(Array.isArray(first.urls) ? (first.urls[0] ?? '') : ''),
       expires_at: String(first.link_expires_at ?? new Date(Date.now() + 3600 * 1000).toISOString()),
       headers: {
         'User-Agent': String(first.ua ?? ''),
@@ -634,33 +634,35 @@ const executeActivePayload = async (run: BrokerRun, participationId: string, pay
   })
 
   try {
-    const waitDeadline = parseDeadline
-      ? new Date(parseDeadline.getTime() - 2000)
-      : undefined
-    const localResult = await parseLinksForBroker({
-      shareUrl: payload.share_url,
-      pwd: payload.password,
-      dir: payload.dir,
-      fsIds: [payload.file_id],
-    }, ensureSystemUser(), {
-      accountWait: {
-        deadline: waitDeadline,
-        onWait: ({ waitMs }) => {
-          updateRun(run.id, {
-            status: 'parsing',
-            message: '等待可用本地账号',
-          })
-          recordBrokerEvent({
-            runId: run.id,
-            taskId: run.taskId,
-            participationId,
-            type: 'account_waiting',
-            message: '等待可用本地账号',
-            details: { waitMs, parseDeadline: parseDeadline?.toISOString() },
-          })
+    const waitDeadline = parseDeadline ? new Date(parseDeadline.getTime() - 2000) : undefined
+    const localResult = await parseLinksForBroker(
+      {
+        shareUrl: payload.share_url,
+        pwd: payload.password,
+        dir: payload.dir,
+        fsIds: [payload.file_id],
+      },
+      ensureSystemUser(),
+      {
+        accountWait: {
+          deadline: waitDeadline,
+          onWait: ({ waitMs }) => {
+            updateRun(run.id, {
+              status: 'parsing',
+              message: '等待可用本地账号',
+            })
+            recordBrokerEvent({
+              runId: run.id,
+              taskId: run.taskId,
+              participationId,
+              type: 'account_waiting',
+              message: '等待可用本地账号',
+              details: { waitMs, parseDeadline: parseDeadline?.toISOString() },
+            })
+          },
         },
       },
-    })
+    )
     const first = localResult[0] as Record<string, unknown>
     updateRun(run.id, {
       status: 'submitting',
@@ -859,21 +861,24 @@ const adoptLegacyRuns = () => {
   for (const item of legacy.slice(0, 50)) {
     if (!item.id || !item.taskId) continue
     const status = normalizeLegacyRunStatus(item.status)
-    db.insert(brokerRuns).values({
-      id: item.id,
-      taskId: item.taskId,
-      participationId: item.participationId ?? null,
-      status,
-      failureCode: item.failureCode ?? null,
-      message: item.message ?? '',
-      provider: item.payloadSummary?.provider ?? null,
-      fileId: item.payloadSummary?.fileId ?? null,
-      fileName: item.payloadSummary?.fileName ?? null,
-      fileSizeBytes: item.payloadSummary?.fileSizeBytes ?? null,
-      createdAt: parseDate(item.createdAt) ?? new Date(),
-      updatedAt: parseDate(item.updatedAt) ?? new Date(),
-      finishedAt: terminalStatuses.has(status) ? parseDate(item.updatedAt) ?? new Date() : null,
-    }).onConflictDoNothing().run()
+    db.insert(brokerRuns)
+      .values({
+        id: item.id,
+        taskId: item.taskId,
+        participationId: item.participationId ?? null,
+        status,
+        failureCode: item.failureCode ?? null,
+        message: item.message ?? '',
+        provider: item.payloadSummary?.provider ?? null,
+        fileId: item.payloadSummary?.fileId ?? null,
+        fileName: item.payloadSummary?.fileName ?? null,
+        fileSizeBytes: item.payloadSummary?.fileSizeBytes ?? null,
+        createdAt: parseDate(item.createdAt) ?? new Date(),
+        updatedAt: parseDate(item.updatedAt) ?? new Date(),
+        finishedAt: terminalStatuses.has(status) ? (parseDate(item.updatedAt) ?? new Date()) : null,
+      })
+      .onConflictDoNothing()
+      .run()
   }
 }
 
@@ -932,7 +937,7 @@ export const brokerLoop = async () => {
       return getBrokerRuntimeSnapshot()
     }
 
-    const tasks = Array.isArray(polled.tasks) ? polled.tasks as BrokerTask[] : []
+    const tasks = Array.isArray(polled.tasks) ? (polled.tasks as BrokerTask[]) : []
     let started = 0
     for (const task of tasks) {
       if (!task.task_id || started >= capacity) continue
@@ -1012,33 +1017,41 @@ const serializeRun = (run: BrokerRun) => ({
   finishedAt: run.finishedAt?.toISOString() ?? null,
   nextPollAt: run.nextPollAt?.toISOString() ?? null,
   localParseRecordId: run.localParseRecordId,
-  payloadSummary: run.provider || run.fileId || run.fileName ? {
-    provider: run.provider ?? 'baidu',
-    fileId: run.fileId ?? '',
-    fileName: run.fileName ?? '',
-    fileSizeBytes: Number(run.fileSizeBytes ?? 0),
-  } : null,
+  payloadSummary:
+    run.provider || run.fileId || run.fileName
+      ? {
+          provider: run.provider ?? 'baidu',
+          fileId: run.fileId ?? '',
+          fileName: run.fileName ?? '',
+          fileSizeBytes: Number(run.fileSizeBytes ?? 0),
+        }
+      : null,
 })
 
 export const listBrokerRuns = (limit = 50) => {
   adoptLegacyRuns()
-  return db.select().from(brokerRuns)
+  return db
+    .select()
+    .from(brokerRuns)
     .orderBy(desc(brokerRuns.updatedAt))
     .limit(Math.max(1, Math.min(200, Math.floor(limit))))
     .all()
     .map(serializeRun)
 }
 
-export const listBrokerRunEvents = (runId: string, limit = 100) => db.select().from(brokerRunEvents)
-  .where(eq(brokerRunEvents.runId, runId))
-  .orderBy(desc(brokerRunEvents.createdAt))
-  .limit(Math.max(1, Math.min(500, Math.floor(limit))))
-  .all()
-  .map((event) => ({
-    ...event,
-    createdAt: event.createdAt.toISOString(),
-    details: event.details ? JSON.parse(event.details) as Record<string, unknown> : null,
-  }))
+export const listBrokerRunEvents = (runId: string, limit = 100) =>
+  db
+    .select()
+    .from(brokerRunEvents)
+    .where(eq(brokerRunEvents.runId, runId))
+    .orderBy(desc(brokerRunEvents.createdAt))
+    .limit(Math.max(1, Math.min(500, Math.floor(limit))))
+    .all()
+    .map((event) => ({
+      ...event,
+      createdAt: event.createdAt.toISOString(),
+      details: event.details ? (JSON.parse(event.details) as Record<string, unknown>) : null,
+    }))
 
 export const getBrokerRunDetail = (runId: string) => {
   adoptLegacyRuns()
@@ -1087,11 +1100,10 @@ export const endBrokerMaintenanceStop = (options: { restart?: boolean } = {}) =>
 export const getBrokerRuntimeSnapshot = () => {
   adoptLegacyRuns()
   const broker = getBrokerConfig()
-  const availableAccounts = db.select().from(baiduAccounts)
-    .where(and(
-      eq(baiduAccounts.status, 'active'),
-      or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, new Date())),
-    ))
+  const availableAccounts = db
+    .select()
+    .from(baiduAccounts)
+    .where(and(eq(baiduAccounts.status, 'active'), or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, new Date()))))
     .all()
   const active = activeRuns().map(serializeRun)
   const recent = listBrokerRuns(50)
@@ -1155,7 +1167,9 @@ export const startAgentBrokerRuntime = () => {
         message: 'Agent 重启，旧运行已中断',
       })
     } else {
-      db.delete(brokerRuns).where(and(eq(brokerRuns.id, run.id), ne(brokerRuns.status, 'success'))).run()
+      db.delete(brokerRuns)
+        .where(and(eq(brokerRuns.id, run.id), ne(brokerRuns.status, 'success')))
+        .run()
     }
   }
 }

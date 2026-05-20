@@ -154,14 +154,16 @@ type ShareDownloadResponse = {
   errno?: number
   error_msg?: string
   show_msg?: string
-  list?: string | Array<{
-    dlink?: string
-    fs_id?: number | string
-    md5?: string
-    server_filename?: string
-    size?: number | string
-    path?: string
-  }>
+  list?:
+    | string
+    | Array<{
+        dlink?: string
+        fs_id?: number | string
+        md5?: string
+        server_filename?: string
+        size?: number | string
+        path?: string
+      }>
 }
 
 type SharedDownloadClientType = 0 | 12
@@ -197,13 +199,11 @@ const mapShareError = (errno: number | string, errtype: number | string) => {
 
 const toNumber = (value: unknown) => Number(value ?? 0)
 const toString = (value: unknown) => String(value ?? '')
-const diskListOrder = (order?: 'time' | 'filename') => order === 'time' ? 'time' : 'name'
+const diskListOrder = (order?: 'time' | 'filename') => (order === 'time' ? 'time' : 'name')
 
 const isRetryablePcsError = (error: AppError) => {
   if (error.code === 'BAIDU_HTTP_FAILED') {
-    const status = typeof error.details === 'object' && error.details !== null && 'status' in error.details
-      ? Number(error.details.status)
-      : 0
+    const status = typeof error.details === 'object' && error.details !== null && 'status' in error.details ? Number(error.details.status) : 0
     return status === 403
   }
   return error.code === 'DLINK_FAILED'
@@ -255,20 +255,22 @@ export class BaiduClient {
       shareid: response.data.shareid,
       randsk: decodeSecKey(response.data.seckey),
       uname: response.data.uname,
-      list: response.data.list.map((item): ShareFile => ({
-        category: toNumber(item.category),
-        fs_id: toNumber(item.fs_id),
-        is_dir: toNumber(item.isdir) === 1,
-        local_ctime: toNumber(item.local_ctime),
-        local_mtime: toNumber(item.local_mtime),
-        md5: toString(item.md5),
-        path: toString(item.path),
-        server_ctime: toNumber(item.server_ctime),
-        server_mtime: toNumber(item.server_mtime),
-        server_filename: toString(item.server_filename),
-        size: toNumber(item.size),
-        dlink: toString(item.dlink),
-      })),
+      list: response.data.list.map(
+        (item): ShareFile => ({
+          category: toNumber(item.category),
+          fs_id: toNumber(item.fs_id),
+          is_dir: toNumber(item.isdir) === 1,
+          local_ctime: toNumber(item.local_ctime),
+          local_mtime: toNumber(item.local_mtime),
+          md5: toString(item.md5),
+          path: toString(item.path),
+          server_ctime: toNumber(item.server_ctime),
+          server_mtime: toNumber(item.server_mtime),
+          server_filename: toString(item.server_filename),
+          size: toNumber(item.size),
+          dlink: toString(item.dlink),
+        }),
+      ),
     }
   }
 
@@ -514,11 +516,7 @@ export class BaiduClient {
     return response
   }
 
-  async createDiskDirectory(params: {
-    path: string
-    cookie: string
-    bdstoken: string
-  }): Promise<{ path: string, createdPath?: string }> {
+  async createDiskDirectory(params: { path: string; cookie: string; bdstoken: string }): Promise<{ path: string; createdPath?: string }> {
     const response = await requestJson<CreateDirectoryResponse>('https://pan.baidu.com/api/create', {
       label: 'create_temp_dir',
       method: 'POST',
@@ -551,10 +549,7 @@ export class BaiduClient {
     throw upstreamError('CREATE_TEMP_DIR_FAILED', `创建转存临时目录失败: ${message}`, response)
   }
 
-  async createDiskDirectoryByAccessToken(params: {
-    path: string
-    accessToken: string
-  }): Promise<{ path: string, createdPath?: string }> {
+  async createDiskDirectoryByAccessToken(params: { path: string; accessToken: string }): Promise<{ path: string; createdPath?: string }> {
     const response = await requestJson<CreateDirectoryResponse>('https://pan.baidu.com/rest/2.0/xpan/file', {
       label: 'create_temp_dir_open_platform',
       method: 'POST',
@@ -584,10 +579,7 @@ export class BaiduClient {
     throw upstreamError('CREATE_TEMP_DIR_FAILED', `创建开放平台临时目录失败: ${message}`, response)
   }
 
-  async diskPathExists(params: {
-    path: string
-    cookie: string
-  }) {
+  async diskPathExists(params: { path: string; cookie: string }) {
     if (params.path === '/') return true
     const normalized = params.path.replace(/\/+$/, '')
     const slash = normalized.lastIndexOf('/')
@@ -611,10 +603,9 @@ export class BaiduClient {
     })
 
     if (response.errno === 0) {
-      return Boolean(response.list?.some((item) =>
-        Number(item.isdir ?? 0) === 1 &&
-        (String(item.path ?? '') === normalized || String(item.server_filename ?? '') === name),
-      ))
+      return Boolean(
+        response.list?.some((item) => Number(item.isdir ?? 0) === 1 && (String(item.path ?? '') === normalized || String(item.server_filename ?? '') === name)),
+      )
     }
     if (response.errno === 12 || response.errno === 31066) return false
 
@@ -622,13 +613,7 @@ export class BaiduClient {
     throw upstreamError('DISK_PATH_CHECK_FAILED', `检查网盘目录失败: ${message}`, response)
   }
 
-  async listDiskFiles(params: {
-    dir?: string
-    page?: number
-    pageSize?: number
-    order?: 'time' | 'filename'
-    cookie: string
-  }): Promise<DiskListResult> {
+  async listDiskFiles(params: { dir?: string; page?: number; pageSize?: number; order?: 'time' | 'filename'; cookie: string }): Promise<DiskListResult> {
     const dir = params.dir || '/'
     const response = await requestJson<DiskListResponse>('https://pan.baidu.com/rest/2.0/xpan/file', {
       label: 'disk_list_files',
@@ -661,10 +646,7 @@ export class BaiduClient {
     }
   }
 
-  async diskPathExistsByAccessToken(params: {
-    path: string
-    accessToken: string
-  }) {
+  async diskPathExistsByAccessToken(params: { path: string; accessToken: string }) {
     if (params.path === '/') return true
     const normalized = params.path.replace(/\/+$/, '')
     const slash = normalized.lastIndexOf('/')
@@ -689,10 +671,9 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.errno === 0) {
-      return Boolean(response.list?.some((item) =>
-        Number(item.isdir ?? 0) === 1 &&
-        (String(item.path ?? '') === normalized || String(item.server_filename ?? '') === name),
-      ))
+      return Boolean(
+        response.list?.some((item) => Number(item.isdir ?? 0) === 1 && (String(item.path ?? '') === normalized || String(item.server_filename ?? '') === name)),
+      )
     }
     if (response.errno === 12 || response.errno === 31066) return false
 
@@ -742,11 +723,7 @@ export class BaiduClient {
     }
   }
 
-  async getSign(params: {
-    shareid: number
-    uk: number
-    cookie: string
-  }): Promise<ShareSignResult> {
+  async getSign(params: { shareid: number; uk: number; cookie: string }): Promise<ShareSignResult> {
     const response = await requestJson<SignResponse>('https://pan.baidu.com/share/tplconfig', {
       label: 'share_tplconfig',
       method: 'GET',
@@ -775,15 +752,7 @@ export class BaiduClient {
     }
   }
 
-  async getSharedDownload(params: {
-    fsId: number
-    timestamp: number
-    sign: string
-    randsk: string
-    shareid: number
-    uk: number
-    cookie: string
-  }) {
+  async getSharedDownload(params: { fsId: number; timestamp: number; sign: string; randsk: string; shareid: number; uk: number; cookie: string }) {
     let response = await this.requestSharedDownload(params, 12)
     if (response.errno === 9019) {
       response = await this.requestSharedDownload(params, 0)
@@ -796,10 +765,18 @@ export class BaiduClient {
       throw upstreamError('SHARED_DOWNLOAD_UNSUPPORTED', '获取 dlink 失败: 百度返回了非直链格式，当前 sharedownload 路线不支持该文件', response)
     }
     if (response.errno === 9019) {
-      throw upstreamError('BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED', `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? 'Cookie 状态异常或账号受限'}`, response)
+      throw upstreamError(
+        'BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED',
+        `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? 'Cookie 状态异常或账号受限'}`,
+        response,
+      )
     }
     if (response.errno === 8001) {
-      throw upstreamError('BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED', `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? '账号状态异常或环境受限'}`, response)
+      throw upstreamError(
+        'BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED',
+        `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? '账号状态异常或环境受限'}`,
+        response,
+      )
     }
     if (response.errno === -20) {
       throw upstreamError('BAIDU_CAPTCHA_OR_RISK_CONTROL', `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? '需要验证码或触发风控'}`, response)
@@ -861,15 +838,18 @@ export class BaiduClient {
     return response.extra.list
   }
 
-  private requestSharedDownload(params: {
-    fsId: number
-    timestamp: number
-    sign: string
-    randsk: string
-    shareid: number
-    uk: number
-    cookie: string
-  }, clienttype: SharedDownloadClientType) {
+  private requestSharedDownload(
+    params: {
+      fsId: number
+      timestamp: number
+      sign: string
+      randsk: string
+      shareid: number
+      uk: number
+      cookie: string
+    },
+    clienttype: SharedDownloadClientType,
+  ) {
     return requestJson<ShareDownloadResponse>('https://pan.baidu.com/api/sharedownload', {
       label: 'share_download',
       method: 'POST',
@@ -901,11 +881,7 @@ export class BaiduClient {
     })
   }
 
-  async resolveRealLink(params: {
-    dlink: string
-    cookie: string
-    userAgent: string
-  }) {
+  async resolveRealLink(params: { dlink: string; cookie: string; userAgent: string }) {
     return requestHeadLocation(params.dlink, {
       'User-Agent': params.userAgent,
       Cookie: params.cookie,
@@ -926,11 +902,9 @@ export class BaiduClient {
   }
 
   async downloadByDiskWithCookie(path: string, cookie: string): Promise<string[]> {
-    const userAgents = [
-      getDownloadSettings().pcsUA,
-      getBaiduSettings().baiduFakeWebUA,
-      'pan.baidu.com',
-    ].filter((item, index, items) => item && items.indexOf(item) === index)
+    const userAgents = [getDownloadSettings().pcsUA, getBaiduSettings().baiduFakeWebUA, 'pan.baidu.com'].filter(
+      (item, index, items) => item && items.indexOf(item) === index,
+    )
 
     let lastError: unknown
     for (const userAgent of userAgents) {
@@ -1009,13 +983,9 @@ export class BaiduClient {
       .map((url) => `${url}&origin=dlna`)
   }
 
-  async deleteDiskPaths(params: {
-    paths: string[]
-    cookie: string
-    bdstoken?: string
-  }) {
+  async deleteDiskPaths(params: { paths: string[]; cookie: string; bdstoken?: string }) {
     if (params.paths.length === 0) return
-    const bdstoken = params.bdstoken ?? await this.getBdstoken(params.cookie)
+    const bdstoken = params.bdstoken ?? (await this.getBdstoken(params.cookie))
     const response = await requestJson<FileManagerResponse>('https://pan.baidu.com/api/filemanager', {
       label: 'filemanager_delete',
       method: 'POST',
@@ -1052,10 +1022,7 @@ export class BaiduClient {
     }
   }
 
-  async deleteDiskPathsByAccessToken(params: {
-    paths: string[]
-    accessToken: string
-  }) {
+  async deleteDiskPathsByAccessToken(params: { paths: string[]; accessToken: string }) {
     if (params.paths.length === 0) return
     const response = await requestJson<FileManagerResponse>('https://pan.baidu.com/rest/2.0/xpan/file', {
       label: 'filemanager_delete_open_platform',
@@ -1102,7 +1069,9 @@ const mapDiskFiles = (list: NonNullable<DiskListResponse['list']>): ShareFile[] 
 
 const formatFileManagerError = (response: FileManagerResponse) => {
   const info = Array.isArray(response.info)
-    ? response.info.length > 0 ? JSON.stringify(response.info) : undefined
+    ? response.info.length > 0
+      ? JSON.stringify(response.info)
+      : undefined
     : response.info === undefined || response.info === null || response.info === ''
       ? undefined
       : String(response.info)

@@ -93,7 +93,7 @@ const copyTextToClipboard = async (value: string) => {
   }
 }
 
-export function Panel({ children, className = '' }: { children: React.ReactNode, className?: string }) {
+export function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <section className={`rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/40 ${className}`}>{children}</section>
 }
 
@@ -135,13 +135,7 @@ export function InlineAlert({
   )
 }
 
-export function MiddleEllipsis({
-  text,
-  className = '',
-}: {
-  text: string
-  className?: string
-}) {
+export function MiddleEllipsis({ text, className = '' }: { text: string; className?: string }) {
   const wrapperRef = useRef<HTMLSpanElement | null>(null)
   const textRef = useRef<HTMLSpanElement | null>(null)
   const [display, setDisplay] = useState(text)
@@ -196,9 +190,13 @@ export function MiddleEllipsis({
     recompute()
   }, [text, className])
 
-  useEffect(() => subscribeWindowResize(() => {
-    recompute()
-  }), [text, className])
+  useEffect(
+    () =>
+      subscribeWindowResize(() => {
+        recompute()
+      }),
+    [text, className],
+  )
 
   useEffect(() => {
     if (!tooltip) return
@@ -212,9 +210,12 @@ export function MiddleEllipsis({
     }
   }, [tooltip])
 
-  useEffect(() => () => {
-    if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current)
-  }, [])
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current)
+    },
+    [],
+  )
 
   const showTooltip = () => {
     const isTruncated = recompute()
@@ -269,18 +270,10 @@ export function MiddleEllipsis({
   )
 }
 
-export function HoverTooltip({
-  children,
-  content,
-  disabled = false,
-}: {
-  children: React.ReactNode
-  content: React.ReactNode
-  disabled?: boolean
-}) {
+export function HoverTooltip({ children, content, disabled = false }: { children: React.ReactNode; content: React.ReactNode; disabled?: boolean }) {
   const triggerRef = useRef<HTMLSpanElement | null>(null)
   const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState<{ left: number, top: number, placement: 'top' | 'bottom' } | null>(null)
+  const [position, setPosition] = useState<{ left: number; top: number; placement: 'top' | 'bottom' } | null>(null)
 
   const updatePosition = () => {
     const element = triggerRef.current
@@ -314,13 +307,7 @@ export function HoverTooltip({
   }
 
   return (
-    <span
-      ref={triggerRef}
-      className="inline-flex"
-      onBlur={() => setOpen(false)}
-      onMouseEnter={show}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <span ref={triggerRef} className="inline-flex" onBlur={() => setOpen(false)} onMouseEnter={show} onMouseLeave={() => setOpen(false)}>
       {children}
       {open && position ? (
         <span
@@ -371,26 +358,33 @@ export function Button({
 }
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${props.className ?? ''}`} />
+  return (
+    <input
+      {...props}
+      className={`min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${props.className ?? ''}`}
+    />
+  )
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${props.className ?? ''}`} />
+  return (
+    <textarea
+      {...props}
+      className={`rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${props.className ?? ''}`}
+    />
+  )
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${props.className ?? ''}`} />
+  return (
+    <select
+      {...props}
+      className={`min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${props.className ?? ''}`}
+    />
+  )
 }
 
-export function Field({
-  label,
-  children,
-  hint,
-}: {
-  label: string
-  children: React.ReactNode
-  hint?: string
-}) {
+export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <label className="grid gap-2 text-sm font-semibold text-slate-700">
       <span>{label}</span>
@@ -400,7 +394,7 @@ export function Field({
   )
 }
 
-export function EmptyState({ title, text }: { title: string, text?: string }) {
+export function EmptyState({ title, text }: { title: string; text?: string }) {
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
       <div className="font-semibold text-slate-700">{title}</div>
@@ -411,13 +405,14 @@ export function EmptyState({ title, text }: { title: string, text?: string }) {
 
 export function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase()
-  const styles = normalized === 'active' || normalized === 'success'
-    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-    : normalized === 'cooldown' || normalized === 'running' || normalized === 'waiting'
-      ? 'bg-amber-50 text-amber-700 ring-amber-200'
-      : normalized === 'failed' || normalized === 'disabled'
-        ? 'bg-red-50 text-red-700 ring-red-200'
-        : 'bg-slate-100 text-slate-700 ring-slate-200'
+  const styles =
+    normalized === 'active' || normalized === 'success'
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+      : normalized === 'cooldown' || normalized === 'running' || normalized === 'waiting'
+        ? 'bg-amber-50 text-amber-700 ring-amber-200'
+        : normalized === 'failed' || normalized === 'disabled'
+          ? 'bg-red-50 text-red-700 ring-red-200'
+          : 'bg-slate-100 text-slate-700 ring-slate-200'
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${styles}`}>{status}</span>
 }
 
@@ -429,15 +424,7 @@ export function StateIcon({ status }: { status: 'waiting' | 'queued' | 'running'
   return <AlertCircle className="size-4 text-slate-400" />
 }
 
-export function Table({
-  children,
-  className = '',
-  tableClassName = '',
-}: {
-  children: React.ReactNode
-  className?: string
-  tableClassName?: string
-}) {
+export function Table({ children, className = '', tableClassName = '' }: { children: React.ReactNode; className?: string; tableClassName?: string }) {
   return (
     <div className={`overflow-x-auto rounded-lg border border-slate-200 ${className}`}>
       <table className={`w-full border-collapse text-sm ${tableClassName}`}>{children}</table>
@@ -465,19 +452,24 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4 py-6">
-      <div className={`flex max-h-[88vh] w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-900/20 ${maxWidthClassName}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div
+        className={`flex max-h-[88vh] w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-900/20 ${maxWidthClassName}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-slate-900" id={titleId}>{title}</h3>
+            <h3 className="text-base font-bold text-slate-900" id={titleId}>
+              {title}
+            </h3>
             {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
           </div>
           <button className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" type="button" aria-label="关闭" onClick={onClose}>
             <X className="size-5" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          {children}
-        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
       </div>
     </div>
   )
@@ -501,13 +493,17 @@ export function Pagination({
   const end = Math.min(totalItems, page * pageSize)
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
-      <span>{start}-{end} / {totalItems}</span>
+      <span>
+        {start}-{end} / {totalItems}
+      </span>
       <div className="flex items-center gap-2">
         <Button disabled={page <= 1} onClick={() => onPageChange(page - 1)} variant="secondary" size="sm">
           <ChevronLeft className="size-4" />
           上一页
         </Button>
-        <span className="min-w-16 text-center font-semibold text-slate-700">{page} / {totalPages}</span>
+        <span className="min-w-16 text-center font-semibold text-slate-700">
+          {page} / {totalPages}
+        </span>
         <Button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} variant="secondary" size="sm">
           下一页
           <ChevronRight className="size-4" />
@@ -541,13 +537,20 @@ export function ConfirmDialog({
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4 py-6">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/20" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+      <div
+        className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/20"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+      >
         <div className="flex items-start gap-3">
           <div className={`mt-0.5 rounded-full p-2 ${variant === 'danger' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
             <AlertCircle className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-slate-900" id="confirm-dialog-title">{title}</h3>
+            <h3 className="text-base font-bold text-slate-900" id="confirm-dialog-title">
+              {title}
+            </h3>
             {description ? <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p> : null}
           </div>
           <button className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" type="button" aria-label="关闭" onClick={onCancel}>
@@ -555,8 +558,12 @@ export function ConfirmDialog({
           </button>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button disabled={disabled} onClick={onCancel} variant="secondary">{cancelLabel}</Button>
-          <Button disabled={disabled} onClick={onConfirm} variant={variant}>{confirmLabel}</Button>
+          <Button disabled={disabled} onClick={onCancel} variant="secondary">
+            {cancelLabel}
+          </Button>
+          <Button disabled={disabled} onClick={onConfirm} variant={variant}>
+            {confirmLabel}
+          </Button>
         </div>
       </div>
     </div>

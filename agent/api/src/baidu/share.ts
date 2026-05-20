@@ -37,5 +37,4 @@ export const parseSharePwd = (shareUrl: string) => {
   }
 }
 
-export const decodeSecKey = (seckey: string) =>
-  seckey.replaceAll('-', '+').replaceAll('~', '=').replaceAll('_', '/')
+export const decodeSecKey = (seckey: string) => seckey.replaceAll('-', '+').replaceAll('~', '=').replaceAll('_', '/')

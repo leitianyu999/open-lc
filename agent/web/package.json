@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile ../../.cache/tsc/agent-web.tsbuildinfo"
   },
   "dependencies": {
     "@lc-agent/api": "workspace:*",

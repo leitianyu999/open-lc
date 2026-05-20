@@ -9,28 +9,17 @@ import type { DesktopRuntimeSnapshot, DesktopSwitchResult } from '@lc-agent/api/
 const localHost = '127.0.0.1'
 const externalHost = '0.0.0.0'
 
-type ApplicationMenuRole =
-  | 'about'
-  | 'quit'
-  | 'hide'
-  | 'hideOthers'
-  | 'showAll'
-  | 'undo'
-  | 'redo'
-  | 'cut'
-  | 'copy'
-  | 'paste'
-  | 'selectAll'
+type ApplicationMenuRole = 'about' | 'quit' | 'hide' | 'hideOthers' | 'showAll' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll'
 
 type ApplicationMenuItem =
   | {
-    label?: string
-    role?: ApplicationMenuRole
-    submenu?: ApplicationMenuItem[]
-  }
+      label?: string
+      role?: ApplicationMenuRole
+      submenu?: ApplicationMenuItem[]
+    }
   | {
-    type: 'divider' | 'separator'
-  }
+      type: 'divider' | 'separator'
+    }
 
 const fileExists = (path: string) => existsSync(path)
 
@@ -67,7 +56,7 @@ const waitForHealth = async (url: string) => {
   throw new Error(`Agent server did not become healthy at ${url}`)
 }
 
-const hostForExternalAccess = (enabled: boolean) => enabled ? externalHost : localHost
+const hostForExternalAccess = (enabled: boolean) => (enabled ? externalHost : localHost)
 
 const externalUrlsForPort = (port: number) => {
   const urls: string[] = []
@@ -96,25 +85,24 @@ const editMenu = (): ApplicationMenuItem => ({
 })
 
 const installApplicationMenu = () => {
-  const appMenu: ApplicationMenuItem[] = process.platform === 'darwin'
-    ? [
-      {
-        label: 'LC Agent',
-        submenu: [
-          { label: '关于 LC Agent', role: 'about' },
-          { type: 'separator' },
-          { label: '隐藏 LC Agent', role: 'hide' },
-          { label: '隐藏其他', role: 'hideOthers' },
-          { label: '显示全部', role: 'showAll' },
-          { type: 'separator' },
-          { label: '退出 LC Agent', role: 'quit' },
-        ],
-      },
-      editMenu(),
-    ]
-    : [
-      editMenu(),
-    ]
+  const appMenu: ApplicationMenuItem[] =
+    process.platform === 'darwin'
+      ? [
+          {
+            label: 'LC Agent',
+            submenu: [
+              { label: '关于 LC Agent', role: 'about' },
+              { type: 'separator' },
+              { label: '隐藏 LC Agent', role: 'hide' },
+              { label: '隐藏其他', role: 'hideOthers' },
+              { label: '显示全部', role: 'showAll' },
+              { type: 'separator' },
+              { label: '退出 LC Agent', role: 'quit' },
+            ],
+          },
+          editMenu(),
+        ]
+      : [editMenu()]
 
   Electrobun.ApplicationMenu.setApplicationMenu(appMenu)
 }
@@ -147,11 +135,7 @@ Bun.env.LC_AGENT_NODE_ENV = Bun.env.LC_AGENT_NODE_ENV || 'production'
 Bun.env.LC_AGENT_DESKTOP = '1'
 
 const { initAgentRuntime, startAgentServer } = await import('@lc-agent/api/server')
-const {
-  getDesktopExternalAccessEnabled,
-  registerDesktopController,
-  saveDesktopExternalAccessEnabled,
-} = await import('@lc-agent/api/desktop/runtime')
+const { getDesktopExternalAccessEnabled, registerDesktopController, saveDesktopExternalAccessEnabled } = await import('@lc-agent/api/desktop/runtime')
 
 initAgentRuntime()
 
@@ -168,7 +152,7 @@ let restartTimer: ReturnType<typeof setTimeout> | null = null
 let restartChain: Promise<void> = Promise.resolve()
 let mainWindow: BrowserWindow | null = null
 
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 const runtimeSnapshot = (): DesktopRuntimeSnapshot => {
   const externalUrls = externalUrlsForPort(agent.port)
@@ -263,9 +247,7 @@ registerDesktopController({
   },
   openExternalBrowser: () => {
     const snapshot = runtimeSnapshot()
-    const url = snapshot.externalAccessEnabled
-      ? snapshot.primaryExternalUrl || snapshot.localUrl
-      : snapshot.localUrl
+    const url = snapshot.externalAccessEnabled ? snapshot.primaryExternalUrl || snapshot.localUrl : snapshot.localUrl
     if (!url) throw new Error('没有可用访问地址')
     const opened = Utils.openExternal(url)
     if (!opened) throw new Error('打开外部浏览器失败')

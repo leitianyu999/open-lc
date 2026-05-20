@@ -5,7 +5,7 @@ import { badRequest, forbidden, unauthorized } from '../lib/errors'
 
 export const riskConsentTypes = ['open_platform_account', 'cookie_account', 'broker_execution'] as const
 
-export type RiskConsentType = typeof riskConsentTypes[number]
+export type RiskConsentType = (typeof riskConsentTypes)[number]
 
 const keys = {
   enabled: 'agent_password_enabled',
@@ -19,11 +19,11 @@ const riskConsentKeys: Record<RiskConsentType, string> = {
   broker_execution: 'agent_consent_broker_execution_accepted_at',
 }
 
-const readSetting = (key: string) =>
-  db.select().from(appSettings).where(eq(appSettings.key, key)).get()?.value.trim() ?? ''
+const readSetting = (key: string) => db.select().from(appSettings).where(eq(appSettings.key, key)).get()?.value.trim() ?? ''
 
 const writeSetting = (key: string, value: string) => {
-  db.insert(appSettings).values({ key, value })
+  db.insert(appSettings)
+    .values({ key, value })
     .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } })
     .run()
 }
@@ -35,17 +35,17 @@ const deleteSetting = (key: string) => {
 const hashPassword = async (password: string, salt: string) => {
   const bytes = new TextEncoder().encode(`${salt}:${password}`)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 const normalizePassword = (password: unknown) => String(password ?? '')
 
-export const isRiskConsentType = (value: string): value is RiskConsentType =>
-  riskConsentTypes.includes(value as RiskConsentType)
+export const isRiskConsentType = (value: string): value is RiskConsentType => riskConsentTypes.includes(value as RiskConsentType)
 
-export const getRiskConsentStatus = () => Object.fromEntries(
-  riskConsentTypes.map((type) => [type, Boolean(readSetting(riskConsentKeys[type]))]),
-) as Record<RiskConsentType, boolean>
+export const getRiskConsentStatus = () =>
+  Object.fromEntries(riskConsentTypes.map((type) => [type, Boolean(readSetting(riskConsentKeys[type]))])) as Record<RiskConsentType, boolean>
 
 export const getSecurityStatus = () => ({
   passwordEnabled: readSetting(keys.enabled) === 'true',
@@ -83,10 +83,7 @@ export const loginWithAgentPassword = async (password: unknown) => {
   return getSecurityStatus()
 }
 
-export const updateSecuritySettings = async (input: {
-  enabled: boolean
-  password?: unknown
-}) => {
+export const updateSecuritySettings = async (input: { enabled: boolean; password?: unknown }) => {
   if (!input.enabled) {
     writeSetting(keys.enabled, 'false')
     deleteSetting(keys.salt)

@@ -26,8 +26,7 @@ export type DesktopController = {
 
 let desktopController: DesktopController | null = null
 
-export const getDesktopExternalAccessEnabled = () =>
-  getSettingBoolean('desktopExternalAccess')
+export const getDesktopExternalAccessEnabled = () => getSettingBoolean('desktopExternalAccess')
 
 export const saveDesktopExternalAccessEnabled = (enabled: boolean) => {
   setSetting('desktopExternalAccess', enabled)
@@ -64,10 +63,7 @@ export const setDesktopExternalAccess = async (enabled: boolean) => {
   const result = await desktopController.setExternalAccess(enabled)
   if (!result.ok) {
     saveDesktopExternalAccessEnabled(previous)
-    throw badRequest(
-      'DESKTOP_LISTENER_SWITCH_FAILED',
-      result.error || '桌面监听切换失败',
-    )
+    throw badRequest('DESKTOP_LISTENER_SWITCH_FAILED', result.error || '桌面监听切换失败')
   }
   return desktopController.getRuntime()
 }

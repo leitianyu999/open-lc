@@ -136,28 +136,32 @@ export function BrokerPage() {
         {diagnosis ? <InlineAlert variant={diagnosis.variant}>{diagnosis.message}</InlineAlert> : null}
         <div className="grid gap-3 md:grid-cols-4">
           <MetricCard
-            action={(
+            action={
               <Button className="w-full" disabled={!broker || heartbeatMutation.isPending} onClick={heartbeat} size="sm" variant="secondary">
                 <Radio className="size-4" />
                 Heartbeat
               </Button>
-            )}
+            }
             label="心跳"
             value={broker?.lastHeartbeatStatus ?? 'idle'}
             detail={formatDateTime(broker?.lastHeartbeatAt)}
           />
           <MetricCard
-            action={(
+            action={
               <Button className="w-full" disabled={!broker || pollMutation.isPending} onClick={poll} size="sm" variant="secondary">
                 <Play className="size-4" />
                 执行一轮 Poll
               </Button>
-            )}
+            }
             label="Poll"
             value={broker?.lastPollStatus ?? 'idle'}
             detail={formatDateTime(broker?.lastPollAt)}
           />
-          <MetricCard label="可用账号" value={runtime?.activeAccounts.length ?? 0} detail={`并发空位 ${runtime?.runtime.capacity ?? 0}/${runtime?.runtime.maxConcurrentRuns ?? 0}`} />
+          <MetricCard
+            label="可用账号"
+            value={runtime?.activeAccounts.length ?? 0}
+            detail={`并发空位 ${runtime?.runtime.capacity ?? 0}/${runtime?.runtime.maxConcurrentRuns ?? 0}`}
+          />
           <MetricCard label="运行中" value={runtime?.runtime.activeRunCount ?? 0} detail={runtime?.runtime.started ? 'Runtime 已启动' : 'Runtime 未启动'} />
         </div>
         {broker ? (
@@ -165,7 +169,11 @@ export function BrokerPage() {
             <RuntimeCell label="Broker Base URL" meta={`来源 ${sourceLabel(broker.baseUrlSource)}`} value={broker.baseUrl || '-'} />
             <RuntimeCell label="Agent Token" meta={`来源 ${sourceLabel(broker.agentTokenSource)}`} value={broker.agentTokenConfigured ? '已配置' : '未配置'} />
             <RuntimeCell label="启用状态" meta={`来源 ${sourceLabel(broker.enabledSource)}`} value={broker.enabled ? '已启用' : '未启用'} />
-            <RuntimeCell label="最近请求" meta={broker.lastRequestBaseUrl || '-'} value={[`Heartbeat ${broker.lastHeartbeatHttpStatus ?? '-'}`, `Poll ${broker.lastPollHttpStatus ?? '-'}`].join(' · ')} />
+            <RuntimeCell
+              label="最近请求"
+              meta={broker.lastRequestBaseUrl || '-'}
+              value={[`Heartbeat ${broker.lastHeartbeatHttpStatus ?? '-'}`, `Poll ${broker.lastPollHttpStatus ?? '-'}`].join(' · ')}
+            />
           </div>
         ) : null}
       </Panel>
@@ -178,26 +186,13 @@ export function BrokerPage() {
             success {terminalCounts.success} · failed {terminalCounts.failed}
           </div>
         </div>
-        <RunTable
-          emptyTitle="暂无最近执行"
-          runs={recentRuns}
-        />
+        <RunTable emptyTitle="暂无最近执行" runs={recentRuns} />
       </Panel>
     </div>
   )
 }
 
-function MetricCard({
-  label,
-  value,
-  detail,
-  action,
-}: {
-  label: string
-  value: string | number
-  detail?: string
-  action?: ReactNode
-}) {
+function MetricCard({ label, value, detail, action }: { label: string; value: string | number; detail?: string; action?: ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -208,7 +203,7 @@ function MetricCard({
   )
 }
 
-function RuntimeCell({ label, value, meta }: { label: string, value: string, meta: string }) {
+function RuntimeCell({ label, value, meta }: { label: string; value: string; meta: string }) {
   return (
     <div>
       <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -218,13 +213,7 @@ function RuntimeCell({ label, value, meta }: { label: string, value: string, met
   )
 }
 
-function RunTable({
-  runs,
-  emptyTitle,
-}: {
-  runs: BrokerRun[]
-  emptyTitle: string
-}) {
+function RunTable({ runs, emptyTitle }: { runs: BrokerRun[]; emptyTitle: string }) {
   if (runs.length === 0) return <EmptyState title={emptyTitle} />
 
   return (
@@ -244,16 +233,22 @@ function RunTable({
               <MiddleEllipsis text={runTitle(run)} className="max-w-[320px] font-semibold" />
               <div className="mt-1 text-xs text-slate-500">Task {run.taskId}</div>
               {run.payloadSummary ? (
-                <div className="mt-1 text-xs text-slate-500">{run.payloadSummary.provider} · {formatBytes(run.payloadSummary.fileSizeBytes)}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {run.payloadSummary.provider} · {formatBytes(run.payloadSummary.fileSizeBytes)}
+                </div>
               ) : null}
               {run.message ? <div className="mt-1 max-w-[360px] truncate text-xs text-slate-600">{run.message}</div> : null}
             </td>
-            <td className="p-3"><StatusBadge status={run.status} /></td>
+            <td className="p-3">
+              <StatusBadge status={run.status} />
+            </td>
             <td className="p-3 text-sm text-slate-600">{formatDateTime(run.updatedAt)}</td>
             <td className="p-3">
               <div className="flex flex-wrap gap-2">
                 <Link to="/broker/runs/$runId" params={{ runId: run.id }}>
-                  <Button size="sm" variant="secondary">详情</Button>
+                  <Button size="sm" variant="secondary">
+                    详情
+                  </Button>
                 </Link>
               </div>
             </td>

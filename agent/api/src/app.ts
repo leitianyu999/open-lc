@@ -11,10 +11,9 @@ export type CreateAgentAppOptions = {
   webDistRoot?: string
 }
 
-const normalizeRoot = (root: string) => root.endsWith('/') ? root : `${root}/`
+const normalizeRoot = (root: string) => (root.endsWith('/') ? root : `${root}/`)
 
-export const resolveWebDistRoot = (webDistRoot = config.webDistRoot) =>
-  normalizeRoot(webDistRoot || defaultWebDistRoot)
+export const resolveWebDistRoot = (webDistRoot = config.webDistRoot) => normalizeRoot(webDistRoot || defaultWebDistRoot)
 
 const webAssetResponse = async (webDistRoot: string, name: string, fallbackName?: string) => {
   const file = Bun.file(`${webDistRoot}${name}`)
@@ -33,19 +32,8 @@ export const createAgentApp = (options: CreateAgentAppOptions = {}) => {
   const webDistRoot = resolveWebDistRoot(options.webDistRoot)
   const webDevProxyUrl = config.webDevProxyUrl
   const webDevProxyEnabled = Boolean(webDevProxyUrl && config.nodeEnv !== 'production')
-  const webDevProxyPrefixes = [
-    '/@vite',
-    '/@react-refresh',
-    '/src/',
-    '/node_modules/.vite/',
-    '/assets/',
-  ]
-  const webAssetPaths = new Set([
-    '/apple-touch-icon.png',
-    '/favicon.ico',
-    '/favicon.png',
-    '/icon.png',
-  ])
+  const webDevProxyPrefixes = ['/@vite', '/@react-refresh', '/src/', '/node_modules/.vite/', '/assets/']
+  const webAssetPaths = new Set(['/apple-touch-icon.png', '/favicon.ico', '/favicon.png', '/icon.png'])
 
   const shouldProxyToWebDev = (path: string) => {
     if (!webDevProxyEnabled) return false
@@ -75,11 +63,14 @@ export const createAgentApp = (options: CreateAgentAppOptions = {}) => {
 
   app.onError((error, c) => {
     if (isAppError(error)) {
-      return c.json({
-        code: error.code,
-        message: error.message,
-        ...(config.debug && error.details !== undefined ? { details: error.details } : {}),
-      }, error.status as 400 | 401 | 403 | 404 | 409 | 502 | 503)
+      return c.json(
+        {
+          code: error.code,
+          message: error.message,
+          ...(config.debug && error.details !== undefined ? { details: error.details } : {}),
+        },
+        error.status as 400 | 401 | 403 | 404 | 409 | 502 | 503,
+      )
     }
 
     console.error(error)

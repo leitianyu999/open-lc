@@ -58,15 +58,7 @@ export function HistoryDetailContent({
               <Copy className="size-4" />
               复制链接
             </Button>
-            {downloadable ? (
-              <DownloaderSendButton
-                downloaders={downloaders}
-                items={[downloadable]}
-                menu={false}
-                pending={sending}
-                onSend={onSend}
-              />
-            ) : null}
+            {downloadable ? <DownloaderSendButton downloaders={downloaders} items={[downloadable]} menu={false} pending={sending} onSend={onSend} /> : null}
           </>
         ) : null}
         {record.resultUa ? (
@@ -114,7 +106,9 @@ function EventTimeline({ events }: { events: LocalHistoryDetail['events'] }) {
       {events.map((event) => (
         <div className="grid grid-cols-[16px_minmax(0,1fr)] gap-3" key={event.id}>
           <div className="relative flex justify-center">
-            <span className={`mt-1.5 size-2.5 rounded-full ${event.status === 'success' ? 'bg-emerald-500' : event.status === 'failed' ? 'bg-red-500' : event.status === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+            <span
+              className={`mt-1.5 size-2.5 rounded-full ${event.status === 'success' ? 'bg-emerald-500' : event.status === 'failed' ? 'bg-red-500' : event.status === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`}
+            />
           </div>
           <div className="rounded-lg border border-slate-200 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -127,7 +121,9 @@ function EventTimeline({ events }: { events: LocalHistoryDetail['events'] }) {
             </div>
             <div className="mt-2 text-sm text-slate-700">{event.message}</div>
             {event.details ? (
-              <pre className="mt-2 max-h-36 overflow-auto rounded-md bg-slate-950 px-3 py-2 text-xs leading-5 text-slate-100">{formatDetails(event.details)}</pre>
+              <pre className="mt-2 max-h-36 overflow-auto rounded-md bg-slate-950 px-3 py-2 text-xs leading-5 text-slate-100">
+                {formatDetails(event.details)}
+              </pre>
             ) : null}
           </div>
         </div>
@@ -147,7 +143,9 @@ function AttemptList({ attempts }: { attempts: LocalHistoryDetail['attempts'] })
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={attempt.status} />
               <span className="text-sm font-semibold text-slate-900">账号 {attempt.accountId ?? '-'}</span>
-              {attempt.errorCode ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{attempt.errorCode}</span> : null}
+              {attempt.errorCode ? (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{attempt.errorCode}</span>
+              ) : null}
             </div>
             <span className="text-xs text-slate-500">{formatDateTime(attempt.createdAt)}</span>
           </div>
@@ -158,15 +156,7 @@ function AttemptList({ attempts }: { attempts: LocalHistoryDetail['attempts'] })
   )
 }
 
-function InfoRow({
-  label,
-  value,
-  tone = 'normal',
-}: {
-  label: string
-  value: string
-  tone?: 'normal' | 'danger'
-}) {
+function InfoRow({ label, value, tone = 'normal' }: { label: string; value: string; tone?: 'normal' | 'danger' }) {
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
       <span className="text-slate-500">{label}</span>

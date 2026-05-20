@@ -119,6 +119,12 @@ Start with:
 
 A compatible Broker must keep the Agent-facing HTTP contract and state behavior compatible. It does not need to copy the official Broker database schema, admin console, user frontend, or settlement implementation.
 
+## Open Platform Whitepaper
+
+For the Agent open-platform workflow, account custody model, official API references, and risk controls, see:
+
+- `docs/LC_AGENT_OPEN_PLATFORM_WHITEPAPER.md`
+
 ## Acknowledgements
 
 Thanks to the [LinuxDo community](https://linux.do/) for the discussions and feedback that inspired this project.

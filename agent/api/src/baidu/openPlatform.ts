@@ -14,12 +14,14 @@ type RenewApiPayload = {
   text?: string
 }
 
-type RenewApiResponse = RenewApiPayload | {
-  code?: number
-  data?: RenewApiPayload
-  msg?: string
-  message?: string
-}
+type RenewApiResponse =
+  | RenewApiPayload
+  | {
+      code?: number
+      data?: RenewApiPayload
+      msg?: string
+      message?: string
+    }
 
 export type OpenPlatformRenewOptions = {
   clientKey?: string | null
@@ -111,10 +113,7 @@ export const renewOpenPlatformToken = async (refreshToken: string, options: Open
         client_secret: secretKey,
       },
     }).catch((error) => {
-      throw upstreamError(
-        'OPEN_PLATFORM_TOKEN_RENEW_FAILED',
-        `开放平台换取 access_token 失败: ${openPlatformErrorMessage(error, '未知原因')}`,
-      )
+      throw upstreamError('OPEN_PLATFORM_TOKEN_RENEW_FAILED', `开放平台换取 access_token 失败: ${openPlatformErrorMessage(error, '未知原因')}`)
     })
 
     return normalizeRenewedPayload(response)
@@ -135,10 +134,7 @@ export const renewOpenPlatformToken = async (refreshToken: string, options: Open
       refresh_ui: trimmed,
     },
   }).catch((error) => {
-    throw upstreamError(
-      'OPEN_PLATFORM_TOKEN_RENEW_FAILED',
-      `开放平台换取 access_token 失败: ${openPlatformErrorMessage(error, '未知原因')}`,
-    )
+    throw upstreamError('OPEN_PLATFORM_TOKEN_RENEW_FAILED', `开放平台换取 access_token 失败: ${openPlatformErrorMessage(error, '未知原因')}`)
   })
 
   const payload = normalizePayload(response)

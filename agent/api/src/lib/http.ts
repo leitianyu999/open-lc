@@ -157,8 +157,7 @@ const buildFormBody = (form?: RequestOptions['form']) => {
   return new URLSearchParams(entries)
 }
 
-const isRedirectStatus = (status: number) =>
-  status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+const isRedirectStatus = (status: number) => status === 301 || status === 302 || status === 303 || status === 307 || status === 308
 
 const isFinalStatus = (status: number) => status >= 200 && status < 300
 
@@ -173,17 +172,25 @@ const normalizeLocation = (location: string | null, baseUrl: string) => {
 
 const redactUrl = (url: string) => {
   const target = new URL(url)
-  for (const key of ['bdstoken', 'sekey', 'sign', 'timestamp', 'logid', 'jsToken', 'access_token', 'refresh_token', 'client_secret', 'secret_key', 'refresh_ui']) {
+  for (const key of [
+    'bdstoken',
+    'sekey',
+    'sign',
+    'timestamp',
+    'logid',
+    'jsToken',
+    'access_token',
+    'refresh_token',
+    'client_secret',
+    'secret_key',
+    'refresh_ui',
+  ]) {
     if (target.searchParams.has(key)) target.searchParams.set(key, '[redacted]')
   }
   return target.toString()
 }
 
-const requestManualHeaders = async (
-  url: string,
-  method: 'HEAD' | 'GET',
-  headers?: Record<string, string>,
-) => {
+const requestManualHeaders = async (url: string, method: 'HEAD' | 'GET', headers?: Record<string, string>) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), getParseLimits().requestTimeoutMs)
 

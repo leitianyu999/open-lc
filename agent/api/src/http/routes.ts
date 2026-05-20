@@ -4,18 +4,21 @@ import type { Context, MiddlewareHandler } from 'hono'
 import type { ApplyGlobalResponse } from 'hono/client'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { getShareFileList, getParseHistoryDetail, getParseJob, listParseHistory, parseLinks, recordParseEvent, reparseHistory, submitParseJob } from '../baidu/service'
+import {
+  getShareFileList,
+  getParseHistoryDetail,
+  getParseJob,
+  listParseHistory,
+  parseLinks,
+  recordParseEvent,
+  reparseHistory,
+  submitParseJob,
+} from '../baidu/service'
 import { createOwnedAccount, deleteOwnedAccount, getOwnedAccountDetail, listOwnedAccounts, probeOwnedAccount, setOwnedAccountStatus } from '../baidu/accounts'
 import { runAccountHealthCheckById } from '../baidu/health'
 import { verifyOpenPlatformToken } from '../baidu/openPlatformToken'
 import { db, sqlite } from '../db'
-import {
-  baiduAccounts,
-  parseAttempts,
-  parseRecords,
-  type BaiduAccount,
-  type User,
-} from '../db/schema'
+import { baiduAccounts, parseAttempts, parseRecords, type BaiduAccount, type User } from '../db/schema'
 import { ensureSystemUser } from '../localUser'
 import {
   brokerLoop,
@@ -30,7 +33,16 @@ import {
 } from '../broker/runtime'
 import { badRequest, notFound, unauthorized } from '../lib/errors'
 import { BaiduClient } from '../baidu/client'
-import { acceptRiskConsent, getSecurityStatus, isRiskConsentType, loginWithAgentPassword, requireRiskConsent, updateSecuritySettings, verifyAgentPassword, type RiskConsentType } from '../security/service'
+import {
+  acceptRiskConsent,
+  getSecurityStatus,
+  isRiskConsentType,
+  loginWithAgentPassword,
+  requireRiskConsent,
+  updateSecuritySettings,
+  verifyAgentPassword,
+  type RiskConsentType,
+} from '../security/service'
 import { getBaiduSettings, getDownloadSettings, getSettingsSnapshot, setSettings } from '../settings/service'
 import { getDesktopRuntime, openDesktopExternalBrowser, setDesktopExternalAccess } from '../desktop/runtime'
 import { cleanupRuntimeData, factoryResetAgentData, getMaintenanceSummary } from '../maintenance/service'
@@ -152,9 +164,11 @@ const riskConsentSchema = z.object({
   accepted: z.boolean(),
 })
 
-const settingsUpdateSchema = z.object({
-  values: z.record(z.string(), z.unknown()).optional(),
-}).optional()
+const settingsUpdateSchema = z
+  .object({
+    values: z.record(z.string(), z.unknown()).optional(),
+  })
+  .optional()
 
 const desktopExternalAccessSchema = z.object({
   enabled: z.boolean(),
@@ -163,12 +177,15 @@ const desktopExternalAccessSchema = z.object({
 const consentTypeForCredentialSource = (credentialSource?: string): RiskConsentType =>
   credentialSource === 'open_platform' ? 'open_platform_account' : 'cookie_account'
 
-const resolveDiskFile = async (account: BaiduAccount, input: {
-  fsId: number
-  path: string
-  filename: string
-  sizeBytes?: number
-}) => {
+const resolveDiskFile = async (
+  account: BaiduAccount,
+  input: {
+    fsId: number
+    path: string
+    filename: string
+    sizeBytes?: number
+  },
+) => {
   const download = getDownloadSettings()
   const expiresAt = new Date(Date.now() + download.linkCacheTtlSeconds * 1000)
   if (account.credentialSource === 'open_platform') {
@@ -211,12 +228,15 @@ const parentDirOf = (path: string) => {
   return slash <= 0 ? '/' : normalized.slice(0, slash)
 }
 
-const listDiskFilesForAccount = async (account: BaiduAccount, query: {
-  dir?: string
-  page?: number
-  pageSize?: number
-  order?: 'time' | 'filename'
-}) => {
+const listDiskFilesForAccount = async (
+  account: BaiduAccount,
+  query: {
+    dir?: string
+    page?: number
+    pageSize?: number
+    order?: 'time' | 'filename'
+  },
+) => {
   const dir = query.dir || '/'
   const page = Math.max(1, Math.floor(Number(query.page ?? 1) || 1))
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number(query.pageSize ?? 50) || 50)))
@@ -300,10 +320,20 @@ export const typedRoutes = new Hono<AgentEnv>()
   .put('/api/settings', requireAgentPassword, zValidator('json', settingsUpdateSchema), (c) => {
     const body = c.req.valid('json')
     const values = body?.values ?? {}
-    if (values.showCookieAccountAddButton === true || String(values.showCookieAccountAddButton ?? '').trim().toLowerCase() === 'true') {
+    if (
+      values.showCookieAccountAddButton === true ||
+      String(values.showCookieAccountAddButton ?? '')
+        .trim()
+        .toLowerCase() === 'true'
+    ) {
       requireRiskConsent('cookie_account')
     }
-    if (values.brokerEnabled === true || String(values.brokerEnabled ?? '').trim().toLowerCase() === 'true') {
+    if (
+      values.brokerEnabled === true ||
+      String(values.brokerEnabled ?? '')
+        .trim()
+        .toLowerCase() === 'true'
+    ) {
       requireRiskConsent('broker_execution')
     }
     const data = setSettings(values)
@@ -393,7 +423,11 @@ export const typedRoutes = new Hono<AgentEnv>()
     return c.json({ code: 'OK', data })
   })
   .post('/api/local/accounts/:id/token-check', zValidator('json', emptyJsonSchema), async (c) => {
-    const account = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, Number(c.req.param('id')))).get()
+    const account = db
+      .select()
+      .from(baiduAccounts)
+      .where(eq(baiduAccounts.id, Number(c.req.param('id'))))
+      .get()
     if (!account) throw notFound('ACCOUNT_NOT_FOUND', '账号不存在')
     if (account.credentialSource !== 'open_platform') throw badRequest('TOKEN_CHECK_NOT_SUPPORTED', '只有开放平台账号支持 token 校验')
     const result = await verifyOpenPlatformToken(account, {
@@ -411,7 +445,11 @@ export const typedRoutes = new Hono<AgentEnv>()
     return c.json({ code: 'OK', data: { fakeCookie: getBaiduSettings().baiduFakeCookie } })
   })
   .get('/api/local/browser/disk/:id', zValidator('query', localDiskBrowserQuerySchema), async (c) => {
-    const account = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, Number(c.req.param('id')))).get()
+    const account = db
+      .select()
+      .from(baiduAccounts)
+      .where(eq(baiduAccounts.id, Number(c.req.param('id'))))
+      .get()
     if (!account) throw notFound('ACCOUNT_NOT_FOUND', '账号不存在')
     const data = await listDiskFilesForAccount(account, c.req.valid('query'))
     return c.json({
@@ -429,7 +467,11 @@ export const typedRoutes = new Hono<AgentEnv>()
   .post('/api/local/browser/disk/resolve', zValidator('json', localDiskResolveSchema), async (c) => {
     const body = c.req.valid('json')
     const user = requireLocalUser(c)
-    const account = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, Number(body.accountId))).get()
+    const account = db
+      .select()
+      .from(baiduAccounts)
+      .where(eq(baiduAccounts.id, Number(body.accountId)))
+      .get()
     if (!account) throw notFound('ACCOUNT_NOT_FOUND', '账号不存在')
     const fsId = Number(body.fsId)
     const sizeBytes = body.sizeBytes === undefined ? 0 : Number(body.sizeBytes)
@@ -449,38 +491,42 @@ export const typedRoutes = new Hono<AgentEnv>()
         filename: body.filename,
         sizeBytes,
       })
-      db.insert(parseRecords).values({
-        userId: user.id,
-        accountId: account.id,
-        accountOwnerUserId: account.ownerUserId ?? user.id,
-        shareSurl: `disk:${account.id}`,
-        shareUrl: `disk://${account.id}${body.path}`,
-        pwd: null,
-        dir: parentDirOf(body.path),
-        fsId: String(fsId),
-        filename: body.filename,
-        sizeBytes,
-        md5: null,
-        status: 'success',
-        route: 'disk',
-        credentialSource: account.credentialSource,
-        parseRoute: null,
-        resultUrl: data.urls[0] ?? null,
-        resultUa: data.ua,
-        linkExpiresAt: data.link_expires_at ? new Date(data.link_expires_at) : null,
-        errorCode: null,
-        errorMessage: null,
-        attemptCount: 1,
-      }).run()
+      db.insert(parseRecords)
+        .values({
+          userId: user.id,
+          accountId: account.id,
+          accountOwnerUserId: account.ownerUserId ?? user.id,
+          shareSurl: `disk:${account.id}`,
+          shareUrl: `disk://${account.id}${body.path}`,
+          pwd: null,
+          dir: parentDirOf(body.path),
+          fsId: String(fsId),
+          filename: body.filename,
+          sizeBytes,
+          md5: null,
+          status: 'success',
+          route: 'disk',
+          credentialSource: account.credentialSource,
+          parseRoute: null,
+          resultUrl: data.urls[0] ?? null,
+          resultUa: data.ua,
+          linkExpiresAt: data.link_expires_at ? new Date(data.link_expires_at) : null,
+          errorCode: null,
+          errorMessage: null,
+          attemptCount: 1,
+        })
+        .run()
       const recordId = sqlite.query<{ id: number }, []>('SELECT last_insert_rowid() AS id').get()?.id ?? 0
-      db.insert(parseAttempts).values({
-        parseRecordId: Number(recordId),
-        userId: user.id,
-        accountId: account.id,
-        fsId: String(fsId),
-        status: 'success',
-        message: 'disk resolve success',
-      }).run()
+      db.insert(parseAttempts)
+        .values({
+          parseRecordId: Number(recordId),
+          userId: user.id,
+          accountId: account.id,
+          fsId: String(fsId),
+          status: 'success',
+          message: 'disk resolve success',
+        })
+        .run()
       recordParseEvent({
         type: 'disk_resolve_started',
         recordId: Number(recordId),
@@ -499,43 +545,45 @@ export const typedRoutes = new Hono<AgentEnv>()
       })
       return c.json({ code: 'OK', data: { ...data, record_id: Number(recordId) } })
     } catch (error) {
-      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
-        ? error.code
-        : 'DISK_RESOLVE_FAILED'
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'DISK_RESOLVE_FAILED'
       const message = error instanceof Error ? error.message : String(error)
-      db.insert(parseRecords).values({
-        userId: user.id,
-        accountId: account.id,
-        accountOwnerUserId: account.ownerUserId ?? user.id,
-        shareSurl: `disk:${account.id}`,
-        shareUrl: `disk://${account.id}${body.path}`,
-        pwd: null,
-        dir: parentDirOf(body.path),
-        fsId: String(fsId),
-        filename: body.filename,
-        sizeBytes,
-        md5: null,
-        status: 'failed',
-        route: 'disk',
-        credentialSource: account.credentialSource,
-        parseRoute: null,
-        resultUrl: null,
-        resultUa: null,
-        linkExpiresAt: null,
-        errorCode: code,
-        errorMessage: message,
-        attemptCount: 1,
-      }).run()
+      db.insert(parseRecords)
+        .values({
+          userId: user.id,
+          accountId: account.id,
+          accountOwnerUserId: account.ownerUserId ?? user.id,
+          shareSurl: `disk:${account.id}`,
+          shareUrl: `disk://${account.id}${body.path}`,
+          pwd: null,
+          dir: parentDirOf(body.path),
+          fsId: String(fsId),
+          filename: body.filename,
+          sizeBytes,
+          md5: null,
+          status: 'failed',
+          route: 'disk',
+          credentialSource: account.credentialSource,
+          parseRoute: null,
+          resultUrl: null,
+          resultUa: null,
+          linkExpiresAt: null,
+          errorCode: code,
+          errorMessage: message,
+          attemptCount: 1,
+        })
+        .run()
       const recordId = sqlite.query<{ id: number }, []>('SELECT last_insert_rowid() AS id').get()?.id ?? 0
-      db.insert(parseAttempts).values({
-        parseRecordId: Number(recordId),
-        userId: user.id,
-        accountId: account.id,
-        fsId: String(fsId),
-        status: 'failed',
-        errorCode: code,
-        message,
-      }).run()
+      db.insert(parseAttempts)
+        .values({
+          parseRecordId: Number(recordId),
+          userId: user.id,
+          accountId: account.id,
+          fsId: String(fsId),
+          status: 'failed',
+          errorCode: code,
+          message,
+        })
+        .run()
       recordParseEvent({
         type: 'disk_resolve_started',
         recordId: Number(recordId),
@@ -640,12 +688,15 @@ export type ApiErrorResponse = {
   details?: unknown
 }
 
-export type ClientAppType = ApplyGlobalResponse<AppType, {
-  400: { json: ApiErrorResponse }
-  401: { json: ApiErrorResponse }
-  403: { json: ApiErrorResponse }
-  404: { json: ApiErrorResponse }
-  409: { json: ApiErrorResponse }
-  502: { json: ApiErrorResponse }
-  503: { json: ApiErrorResponse }
-}>
+export type ClientAppType = ApplyGlobalResponse<
+  AppType,
+  {
+    400: { json: ApiErrorResponse }
+    401: { json: ApiErrorResponse }
+    403: { json: ApiErrorResponse }
+    404: { json: ApiErrorResponse }
+    409: { json: ApiErrorResponse }
+    502: { json: ApiErrorResponse }
+    503: { json: ApiErrorResponse }
+  }
+>

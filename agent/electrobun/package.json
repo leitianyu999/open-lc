@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "electrobun dev",
     "build": "electrobun build",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile ../../.cache/tsc/agent-electrobun.tsbuildinfo"
   },
   "dependencies": {
     "@lc-agent/api": "workspace:*",

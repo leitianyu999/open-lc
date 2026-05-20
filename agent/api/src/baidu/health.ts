@@ -35,11 +35,8 @@ const updateAccountHealth = (account: BaiduAccount, result: HealthResult, actor?
   const now = new Date()
   const existingSource = sourceForExistingFailure(account)
   const canAutoRecover = account.disabledSource?.startsWith('health_') || account.disabledSource === 'open_platform_reimport_required'
-  const failures = result.status === 'healthy' || result.status === 'skipped_locked'
-    ? 0
-    : result.deterministic
-      ? 0
-      : (account.healthConsecutiveFailures ?? 0) + 1
+  const failures =
+    result.status === 'healthy' || result.status === 'skipped_locked' ? 0 : result.deterministic ? 0 : (account.healthConsecutiveFailures ?? 0) + 1
   const thresholdReached = failures >= getAccountHealthSettings().accountHealthTransientFailureThreshold
   const shouldDisable = result.deterministic || thresholdReached
   const canHealthManageStatus = account.disabledSource !== 'admin' && account.disabledSource !== 'owner'
@@ -85,7 +82,11 @@ const updateAccountHealth = (account: BaiduAccount, result: HealthResult, actor?
 
   const nextStatus = update.status ?? account.status
   const nextReason = update.reason ?? account.reason
-  if (nextStatus !== account.status || nextReason !== account.reason || update.disabledSource !== undefined && update.disabledSource !== account.disabledSource) {
+  if (
+    nextStatus !== account.status ||
+    nextReason !== account.reason ||
+    (update.disabledSource !== undefined && update.disabledSource !== account.disabledSource)
+  ) {
     recordAccountStatusEvent({
       accountId: account.id,
       oldStatus: account.status,
@@ -100,11 +101,14 @@ const updateAccountHealth = (account: BaiduAccount, result: HealthResult, actor?
   }
 }
 
-export const runAccountHealthCheck = async (account: BaiduAccount, options: {
-  skipLocked?: boolean
-  actor?: User | null
-  persist?: boolean
-} = {}) => {
+export const runAccountHealthCheck = async (
+  account: BaiduAccount,
+  options: {
+    skipLocked?: boolean
+    actor?: User | null
+    persist?: boolean
+  } = {},
+) => {
   const startedAt = Date.now()
   if (options.skipLocked && account.lockedUntil && account.lockedUntil.getTime() > Date.now()) {
     const result: HealthResult = {
@@ -121,37 +125,37 @@ export const runAccountHealthCheck = async (account: BaiduAccount, options: {
     return result
   }
 
-  const result = account.credentialSource === 'open_platform'
-    ? await (async () => {
-      try {
-        const token = await verifyOpenPlatformToken(account, {
-          trigger: 'health_check',
-          allowRefreshFallback: true,
-        })
-        return await probeBaiduOpenPlatform(account.refreshToken ?? '', {
-          accessTokenOverride: token.accessToken,
-          skipRefresh: true,
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
-          ? error.code
-          : 'OPEN_PLATFORM_TOKEN_CHECK_FAILED'
-        return {
-          status: 'failed' as const,
-          code,
-          message,
-          deterministic: true,
-          disabledSource: 'open_platform_reimport_required' as const,
-          loginValid: false,
-          bdstokenValid: true,
-          isSvip: null,
-          durationMs: Date.now() - startedAt,
-          tokenExpiresAt: null,
-        }
-      }
-    })()
-    : await probeBaiduAccountCookie(account.cookie)
+  const result =
+    account.credentialSource === 'open_platform'
+      ? await (async () => {
+          try {
+            const token = await verifyOpenPlatformToken(account, {
+              trigger: 'health_check',
+              allowRefreshFallback: true,
+            })
+            return await probeBaiduOpenPlatform(account.refreshToken ?? '', {
+              accessTokenOverride: token.accessToken,
+              skipRefresh: true,
+            })
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            const code =
+              error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'OPEN_PLATFORM_TOKEN_CHECK_FAILED'
+            return {
+              status: 'failed' as const,
+              code,
+              message,
+              deterministic: true,
+              disabledSource: 'open_platform_reimport_required' as const,
+              loginValid: false,
+              bdstokenValid: true,
+              isSvip: null,
+              durationMs: Date.now() - startedAt,
+              tokenExpiresAt: null,
+            }
+          }
+        })()
+      : await probeBaiduAccountCookie(account.cookie)
 
   if (options.persist !== false) {
     recordAccountHealthCheck(account.id, result)
@@ -199,16 +203,15 @@ export const runAccountHealthMaintenance = async () => {
 
 export const listAccountHealthChecks = (accountId: number, page: number, pageSize: number) => {
   const offset = (page - 1) * pageSize
-  const items = db.select().from(accountHealthChecks)
+  const items = db
+    .select()
+    .from(accountHealthChecks)
     .where(eq(accountHealthChecks.accountId, accountId))
     .orderBy(sql`${accountHealthChecks.id} DESC`)
     .limit(pageSize)
     .offset(offset)
     .all()
-  const [total] = db.select({ value: sql<number>`COUNT(*)` })
-    .from(accountHealthChecks)
-    .where(eq(accountHealthChecks.accountId, accountId))
-    .all()
+  const [total] = db.select({ value: sql<number>`COUNT(*)` }).from(accountHealthChecks).where(eq(accountHealthChecks.accountId, accountId)).all()
   return {
     items,
     page,

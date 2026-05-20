@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, ExternalLink, HelpCircle, LogOut, Loader2, Lock, Plus, RotateCcw, Save, ShieldOff, Trash2 } from 'lucide-react'
 import { useSetAtom } from 'jotai'
-import { api, clearStoredAgentPassword, getStoredAgentPassword, messageFromError, setStoredAgentPassword, type AgentSetting, type AgentSettings, type DesktopRuntime, type RiskConsentType } from '../api'
+import {
+  api,
+  clearStoredAgentPassword,
+  getStoredAgentPassword,
+  messageFromError,
+  setStoredAgentPassword,
+  type AgentSetting,
+  type AgentSettings,
+  type DesktopRuntime,
+  type RiskConsentType,
+} from '../api'
 import { RiskConsentDialog } from '../components/RiskConsentDialog'
 import { Button, ConfirmDialog, MiddleEllipsis, Modal, Panel } from '../components/ui'
 import { defaultDownloaderForType, parseDownloaders, serializeDownloaders, type DownloaderConfig, type DownloaderType } from '../lib/downloaders'
@@ -18,7 +28,7 @@ type DesktopSwitchOverlay = {
   message: string
 } | null
 type MaintenanceConfirmTarget = 'cleanup' | 'factory-reset' | null
-type MaintenanceSummaryResponse = typeof api.api.maintenance.summary.$get.$infer['data']
+type MaintenanceSummaryResponse = (typeof api.api.maintenance.summary.$get.$infer)['data']
 type MaintenanceSummary = MaintenanceSummaryResponse['data']
 type DownloaderDraft = DownloaderConfig
 type PendingRiskConsent = {
@@ -31,10 +41,12 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const desktopSwitchTimeoutMs = 15_000
 const desktopSwitchPollMs = 350
 const settingsRowClassName = 'grid gap-2 px-3 py-3 sm:px-4 lg:grid-cols-[minmax(150px,230px)_86px_minmax(180px,400px)_minmax(188px,auto)] lg:items-center'
-const settingsInputClassName = 'h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500'
+const settingsInputClassName =
+  'h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500'
 const settingsValueCellClassName = 'w-full min-w-0 lg:max-w-[400px]'
 const settingsBadgeCellClassName = 'hidden items-center lg:flex lg:justify-start'
-const settingsActionCellClassName = 'grid min-h-8 grid-cols-[repeat(auto-fit,minmax(76px,1fr))] gap-1.5 sm:flex sm:flex-wrap sm:items-center lg:flex-nowrap lg:justify-end'
+const settingsActionCellClassName =
+  'grid min-h-8 grid-cols-[repeat(auto-fit,minmax(76px,1fr))] gap-1.5 sm:flex sm:flex-wrap sm:items-center lg:flex-nowrap lg:justify-end'
 const settingsActionButtonClassName = 'w-full sm:w-auto'
 
 const groupMeta: Record<SettingsGroupKey, { title: string }> = {
@@ -64,7 +76,7 @@ const groupMeta: Record<SettingsGroupKey, { title: string }> = {
   },
 }
 
-const categoryMeta: Array<{ key: SettingsCategoryKey, title: string }> = [
+const categoryMeta: Array<{ key: SettingsCategoryKey; title: string }> = [
   { key: 'security', title: '访问与安全' },
   { key: 'broker', title: 'Broker 连接' },
   { key: 'runtime', title: '解析与账号' },
@@ -97,14 +109,9 @@ const initialFormFromSettings = (settings: AgentSettings | undefined): SettingsF
 const settingsCount = (settings: AgentSettings | undefined, groups: SettingsGroupKey[]) =>
   groups.reduce((count, group) => count + (settings?.groups[group]?.length ?? 0), 0)
 
-const visibleSettings = (items: AgentSetting[]) =>
-  items.filter((item) => item.name !== 'downloadersJson')
+const visibleSettings = (items: AgentSetting[]) => items.filter((item) => item.name !== 'downloadersJson')
 
-const riskConsentTypeForSettingToggle = (
-  setting: AgentSetting,
-  nextValue: string,
-  consents?: Record<RiskConsentType, boolean>,
-): RiskConsentType | null => {
+const riskConsentTypeForSettingToggle = (setting: AgentSetting, nextValue: string, consents?: Record<RiskConsentType, boolean>): RiskConsentType | null => {
   if (nextValue !== 'true') return null
   if (setting.name === 'showCookieAccountAddButton' && !consents?.cookie_account) return 'cookie_account'
   if (setting.name === 'brokerEnabled' && !consents?.broker_execution) return 'broker_execution'
@@ -119,17 +126,11 @@ function SourceBadge({ setting }: { setting: AgentSetting }) {
   )
 }
 
-function StatusBadge({
-  enabled,
-  enabledLabel,
-  disabledLabel,
-}: {
-  enabled: boolean
-  enabledLabel: string
-  disabledLabel: string
-}) {
+function StatusBadge({ enabled, enabledLabel, disabledLabel }: { enabled: boolean; enabledLabel: string; disabledLabel: string }) {
   return (
-    <span className={`inline-flex h-6 items-center rounded-md px-2 text-[11px] font-semibold ring-1 ${enabled ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
+    <span
+      className={`inline-flex h-6 items-center rounded-md px-2 text-[11px] font-semibold ring-1 ${enabled ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}
+    >
       {enabled ? enabledLabel : disabledLabel}
     </span>
   )
@@ -224,12 +225,10 @@ function SettingRow({
           setting={setting}
           pending={pending}
           saving={pending && savingSettingName === setting.name}
-          value={setting.editable ? form[setting.name] ?? '' : setting.value}
+          value={setting.editable ? (form[setting.name] ?? '') : setting.value}
           onChange={(value) => onChange(setting, value)}
         />
-        {setting.sensitive ? (
-          <div className="mt-1 text-[11px] text-slate-500">当前：{setting.displayValue}</div>
-        ) : null}
+        {setting.sensitive ? <div className="mt-1 text-[11px] text-slate-500">当前：{setting.displayValue}</div> : null}
       </div>
       <div className={settingsActionCellClassName}>
         {setting.editable && setting.type !== 'boolean' ? (
@@ -238,7 +237,13 @@ function SettingRow({
               <Save className="size-4" />
               保存
             </Button>
-            <Button className={settingsActionButtonClassName} disabled={pending || setting.source !== 'database'} onClick={() => onReset(setting)} size="sm" variant="secondary">
+            <Button
+              className={settingsActionButtonClassName}
+              disabled={pending || setting.source !== 'database'}
+              onClick={() => onReset(setting)}
+              size="sm"
+              variant="secondary"
+            >
               <RotateCcw className="size-4" />
               回退
             </Button>
@@ -249,15 +254,7 @@ function SettingRow({
   )
 }
 
-function SectionHeader({
-  title,
-  count,
-  action,
-}: {
-  title: string
-  count: number
-  action?: ReactNode
-}) {
+function SectionHeader({ title, count, action }: { title: string; count: number; action?: ReactNode }) {
   return (
     <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5 sm:px-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -303,12 +300,14 @@ function SettingsSection({
       <SectionHeader
         title={title}
         count={items.length}
-        action={collapsible ? (
-          <Button onClick={onToggle} size="sm" variant="ghost">
-            {collapsed ? '展开' : '收起'}
-            {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
-          </Button>
-        ) : null}
+        action={
+          collapsible ? (
+            <Button onClick={onToggle} size="sm" variant="ghost">
+              {collapsed ? '展开' : '收起'}
+              {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+            </Button>
+          ) : null
+        }
       />
       {collapsed ? null : (
         <div className="divide-y divide-slate-100">
@@ -341,11 +340,7 @@ function LoadingBlock({ label }: { label: string }) {
 }
 
 function EmptyBlock({ label }: { label: string }) {
-  return (
-    <div className="border-t border-slate-200 px-3 py-8 text-center text-sm font-semibold text-slate-500 sm:px-4">
-      {label}
-    </div>
-  )
+  return <div className="border-t border-slate-200 px-3 py-8 text-center text-sm font-semibold text-slate-500 sm:px-4">{label}</div>
 }
 
 function WorkerHelpButton({ onClick }: { onClick: () => void }) {
@@ -373,7 +368,7 @@ function WorkerHelpModal({
   onTabChange: (tab: WorkerHelpTab) => void
   onClose: () => void
 }) {
-  const tabs: Array<{ key: WorkerHelpTab, label: string, filename: string, source: string }> = [
+  const tabs: Array<{ key: WorkerHelpTab; label: string; filename: string; source: string }> = [
     { key: 'worker', label: 'Worker 代理脚本', filename: 'scripts/worker.js', source: workerSource },
     { key: 'encrypt', label: '本地加密示例', filename: 'scripts/encrypt-url.js', source: encryptUrlSource },
   ]
@@ -393,7 +388,9 @@ function WorkerHelpModal({
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="font-bold text-slate-900">Worker 加密密钥</div>
-            <div className="mt-1 leading-6">必须和 Worker 环境变量 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code> 保持一致。</div>
+            <div className="mt-1 leading-6">
+              必须和 Worker 环境变量 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code> 保持一致。
+            </div>
           </div>
         </div>
         <div className="overflow-hidden rounded-lg border border-slate-200">
@@ -585,16 +582,18 @@ function DownloadersSection({
     ])
   }
   const updateDownloader = (id: string, patch: Partial<DownloaderDraft>) => {
-    onChange(downloaders.map((item) => {
-      if (item.id !== id) return item
-      const updated = { ...item, ...patch }
-      if (patch.type) {
-        const fallback = defaultDownloaderForType(patch.type)
-        updated.rpcUrl = item.rpcUrl === defaultDownloaderForType(item.type).rpcUrl ? fallback.rpcUrl : item.rpcUrl
-        updated.name = item.name === defaultDownloaderForType(item.type).name ? fallback.name : item.name
-      }
-      return updated
-    }))
+    onChange(
+      downloaders.map((item) => {
+        if (item.id !== id) return item
+        const updated = { ...item, ...patch }
+        if (patch.type) {
+          const fallback = defaultDownloaderForType(patch.type)
+          updated.rpcUrl = item.rpcUrl === defaultDownloaderForType(item.type).rpcUrl ? fallback.rpcUrl : item.rpcUrl
+          updated.name = item.name === defaultDownloaderForType(item.type).name ? fallback.name : item.name
+        }
+        return updated
+      }),
+    )
   }
   const removeDownloader = (id: string) => {
     const next = downloaders.filter((item) => item.id !== id)
@@ -610,7 +609,7 @@ function DownloadersSection({
       <SectionHeader
         title="下载器"
         count={downloaders.length}
-        action={(
+        action={
           <div className="flex gap-1.5">
             <Button disabled={pending} onClick={() => addDownloader('motrix')} size="sm" variant="secondary">
               <Plus className="size-4" />
@@ -621,7 +620,7 @@ function DownloadersSection({
               aria2
             </Button>
           </div>
-        )}
+        }
       />
       <div className="grid gap-3 px-3 py-3 sm:px-4">
         {downloaders.length === 0 ? (
@@ -635,7 +634,9 @@ function DownloadersSection({
                   <select
                     className={settingsInputClassName}
                     value={downloader.type}
-                    onChange={(event: ChangeEvent<HTMLSelectElement>) => updateDownloader(downloader.id, { type: event.target.value === 'aria2' ? 'aria2' : 'motrix' })}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                      updateDownloader(downloader.id, { type: event.target.value === 'aria2' ? 'aria2' : 'motrix' })
+                    }
                   >
                     <option value="motrix">Motrix</option>
                     <option value="aria2">aria2</option>
@@ -643,28 +644,54 @@ function DownloadersSection({
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-500">
                   名称
-                  <input className={settingsInputClassName} value={downloader.name} onChange={(event) => updateDownloader(downloader.id, { name: event.target.value })} />
+                  <input
+                    className={settingsInputClassName}
+                    value={downloader.name}
+                    onChange={(event) => updateDownloader(downloader.id, { name: event.target.value })}
+                  />
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-500">
                   RPC URL
-                  <input className={settingsInputClassName} value={downloader.rpcUrl} onChange={(event) => updateDownloader(downloader.id, { rpcUrl: event.target.value })} />
+                  <input
+                    className={settingsInputClassName}
+                    value={downloader.rpcUrl}
+                    onChange={(event) => updateDownloader(downloader.id, { rpcUrl: event.target.value })}
+                  />
                 </label>
               </div>
               <div className="grid gap-2 md:grid-cols-[minmax(120px,1fr)_minmax(120px,1fr)]">
                 <label className="grid gap-1 text-xs font-semibold text-slate-500">
                   Token
-                  <input className={settingsInputClassName} value={downloader.token} onChange={(event) => updateDownloader(downloader.id, { token: event.target.value })} />
+                  <input
+                    className={settingsInputClassName}
+                    value={downloader.token}
+                    onChange={(event) => updateDownloader(downloader.id, { token: event.target.value })}
+                  />
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-500">
                   下载目录
-                  <input className={settingsInputClassName} value={downloader.downloadDir} onChange={(event) => updateDownloader(downloader.id, { downloadDir: event.target.value })} />
+                  <input
+                    className={settingsInputClassName}
+                    value={downloader.downloadDir}
+                    onChange={(event) => updateDownloader(downloader.id, { downloadDir: event.target.value })}
+                  />
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button disabled={pending} onClick={() => updateDownloader(downloader.id, { enabled: !downloader.enabled })} size="sm" variant={downloader.enabled ? 'primary' : 'secondary'}>
+                <Button
+                  disabled={pending}
+                  onClick={() => updateDownloader(downloader.id, { enabled: !downloader.enabled })}
+                  size="sm"
+                  variant={downloader.enabled ? 'primary' : 'secondary'}
+                >
                   {downloader.enabled ? '已启用' : '未启用'}
                 </Button>
-                <Button disabled={pending || downloader.isDefault} onClick={() => setDefault(downloader.id)} size="sm" variant={downloader.isDefault ? 'primary' : 'secondary'}>
+                <Button
+                  disabled={pending || downloader.isDefault}
+                  onClick={() => setDefault(downloader.id)}
+                  size="sm"
+                  variant={downloader.isDefault ? 'primary' : 'secondary'}
+                >
                   {downloader.isDefault ? '默认' : '设为默认'}
                 </Button>
                 <Button disabled={pending} onClick={() => removeDownloader(downloader.id)} size="sm" variant="danger">
@@ -704,7 +731,13 @@ function MaintenanceSection({
   if (loading) return <LoadingBlock label="正在读取维护状态" />
 
   const runtimeCount = summary
-    ? summary.parseJobs + summary.parseRecords + summary.parseEvents + summary.baiduTempFiles + summary.accountEvents + summary.brokerRuns + summary.brokerRunEvents
+    ? summary.parseJobs +
+      summary.parseRecords +
+      summary.parseEvents +
+      summary.baiduTempFiles +
+      summary.accountEvents +
+      summary.brokerRuns +
+      summary.brokerRunEvents
     : 0
   const factoryCount = summary ? runtimeCount + summary.baiduAccounts + summary.appSettings : runtimeCount
   const activeCount = summary ? summary.activeParseJobs + summary.activeBrokerRuns : 0
@@ -716,12 +749,12 @@ function MaintenanceSection({
         <SectionHeader
           title="维护状态"
           count={activeCount}
-          action={(
+          action={
             <Button disabled={pending} onClick={onRefresh} size="sm" variant="secondary">
               <RotateCcw className="size-4" />
               刷新
             </Button>
-          )}
+          }
         />
         <div className="grid gap-2 px-3 py-3 sm:grid-cols-2 sm:px-4 lg:grid-cols-4">
           <Metric label="运行数据" value={runtimeCount} />
@@ -757,7 +790,7 @@ function MaintenanceSection({
   )
 }
 
-function Metric({ label, value }: { label: string, value: number }) {
+function Metric({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
       <div className="text-[11px] font-semibold text-slate-500">{label}</div>
@@ -826,13 +859,20 @@ function FactoryResetDialog({
   const confirmed = confirmText.trim() === 'RESET'
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4 py-6">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/20" role="dialog" aria-modal="true" aria-labelledby="factory-reset-dialog-title">
+      <div
+        className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/20"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="factory-reset-dialog-title"
+      >
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-full bg-red-50 p-2 text-red-600">
             <Trash2 className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-slate-900" id="factory-reset-dialog-title">恢复出厂</h3>
+            <h3 className="text-base font-bold text-slate-900" id="factory-reset-dialog-title">
+              恢复出厂
+            </h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">将删除账号、Broker 配置、访问密码和历史。输入 RESET 确认。</p>
             <input
               autoFocus
@@ -844,7 +884,9 @@ function FactoryResetDialog({
           </div>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button disabled={disabled} onClick={onCancel} variant="secondary">取消</Button>
+          <Button disabled={disabled} onClick={onCancel} variant="secondary">
+            取消
+          </Button>
           <Button disabled={disabled || !confirmed} onClick={onConfirm} variant="danger">
             {disabled ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
             恢复出厂
@@ -892,7 +934,8 @@ export function SettingsPage() {
   const desktopMode = desktopRuntime?.desktopMode === true
   const maintenanceSummary = maintenanceSummaryQuery.data?.data
   const maintenancePending = maintenanceCleanupMutation.isPending || maintenanceFactoryResetMutation.isPending
-  const settingsQueryError = agentSettingsQuery.isError && !settingsQueryErrorDismissed ? messageFromError(agentSettingsQuery.error, '读取 Agent 配置失败') : null
+  const settingsQueryError =
+    agentSettingsQuery.isError && !settingsQueryErrorDismissed ? messageFromError(agentSettingsQuery.error, '读取 Agent 配置失败') : null
 
   useEffect(() => {
     if (!passwordEnabled) return
@@ -921,22 +964,27 @@ export function SettingsPage() {
     setSettingsQueryErrorDismissed(true)
   }, [settingsQueryError, pushNotification])
 
-  const categories = useMemo(() => categoryMeta.map((category) => {
-    const count = category.key === 'security'
-      ? 1 + (desktopMode ? 1 : 0)
-      : category.key === 'broker'
-        ? settingsCount(settings, ['broker'])
-        : category.key === 'runtime'
-          ? settingsCount(settings, ['account', 'parse', 'health'])
-          : category.key === 'advanced'
-            ? visibleSettings(settings?.groups.download ?? []).length + settingsCount(settings, ['baidu', 'deployment'])
-            : 2
+  const categories = useMemo(
+    () =>
+      categoryMeta.map((category) => {
+        const count =
+          category.key === 'security'
+            ? 1 + (desktopMode ? 1 : 0)
+            : category.key === 'broker'
+              ? settingsCount(settings, ['broker'])
+              : category.key === 'runtime'
+                ? settingsCount(settings, ['account', 'parse', 'health'])
+                : category.key === 'advanced'
+                  ? visibleSettings(settings?.groups.download ?? []).length + settingsCount(settings, ['baidu', 'deployment'])
+                  : 2
 
-    return {
-      ...category,
-      count,
-    }
-  }), [desktopMode, settings])
+        return {
+          ...category,
+          count,
+        }
+      }),
+    [desktopMode, settings],
+  )
 
   const activeCategoryMeta = categories.find((category) => category.key === activeCategory) ?? categories[0]
 
@@ -1019,10 +1067,7 @@ export function SettingsPage() {
           },
         },
       })
-      await Promise.all([
-        agentSettingsQuery.refetch(),
-        setting.name === 'brokerEnabled' ? api.api.settings.$get.invalidate() : Promise.resolve(),
-      ])
+      await Promise.all([agentSettingsQuery.refetch(), setting.name === 'brokerEnabled' ? api.api.settings.$get.invalidate() : Promise.resolve()])
       pushNotification({
         variant: 'success',
         message: `${setting.label} 已保存`,
@@ -1031,7 +1076,7 @@ export function SettingsPage() {
       setError(messageFromError(err, `保存 ${setting.label} 失败`))
       await agentSettingsQuery.refetch()
     } finally {
-      setSavingSettingName((current) => current === setting.name ? null : current)
+      setSavingSettingName((current) => (current === setting.name ? null : current))
     }
   }
 
@@ -1198,11 +1243,7 @@ export function SettingsPage() {
     try {
       await maintenanceCleanupMutation.mutateAsync({ json: {} })
       clearParseExecution()
-      await Promise.all([
-        maintenanceSummaryQuery.refetch(),
-        agentSettingsQuery.refetch(),
-        desktopRuntimeQuery.refetch(),
-      ])
+      await Promise.all([maintenanceSummaryQuery.refetch(), agentSettingsQuery.refetch(), desktopRuntimeQuery.refetch()])
       pushNotification({
         variant: 'success',
         message: '运行数据已清理',
@@ -1344,12 +1385,7 @@ export function SettingsPage() {
           onSave={saveSetting}
           rowActionForSetting={rowActionForSetting}
         />
-        <DownloadersSection
-          downloaders={downloadersDraft}
-          pending={agentSettingsMutation.isPending}
-          onChange={setDownloadersDraft}
-          onSave={saveDownloaders}
-        />
+        <DownloadersSection downloaders={downloadersDraft} pending={agentSettingsMutation.isPending} onChange={setDownloadersDraft} onSave={saveDownloaders} />
         <SettingsSection
           collapsed={!advancedOpen.baidu}
           collapsible
@@ -1455,12 +1491,7 @@ export function SettingsPage() {
         }}
         onCancel={() => setPendingRiskConsent(null)}
       />
-      <WorkerHelpModal
-        activeTab={workerHelpTab}
-        open={workerHelpOpen}
-        onClose={() => setWorkerHelpOpen(false)}
-        onTabChange={setWorkerHelpTab}
-      />
+      <WorkerHelpModal activeTab={workerHelpTab} open={workerHelpOpen} onClose={() => setWorkerHelpOpen(false)} onTabChange={setWorkerHelpTab} />
       {desktopSwitchOverlay ? <DesktopSwitchLoading message={desktopSwitchOverlay.message} /> : null}
     </div>
   )

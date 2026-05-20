@@ -52,16 +52,19 @@ export function AppShell() {
     }
     const stored = getStoredAgentPassword()
     if (!stored) return
-    loginMutation.mutate({ json: { password: stored } }, {
-      onSuccess: () => {
-        setUnlocked(true)
-        setLoginError(null)
+    loginMutation.mutate(
+      { json: { password: stored } },
+      {
+        onSuccess: () => {
+          setUnlocked(true)
+          setLoginError(null)
+        },
+        onError: () => {
+          clearStoredAgentPassword()
+          setUnlocked(false)
+        },
       },
-      onError: () => {
-        clearStoredAgentPassword()
-        setUnlocked(false)
-      },
-    })
+    )
   }, [statusQuery.data])
 
   const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -129,7 +132,14 @@ export function AppShell() {
         <nav className="mx-auto flex max-w-7xl overflow-x-auto px-4 pb-3 md:hidden">
           <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
             {visibleNavItems.map((item) => (
-              <Link activeProps={{ className: 'bg-white text-blue-700 shadow-sm' }} aria-label={item.label} className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-sm font-semibold text-slate-600" key={item.to} to={item.to} title={item.label}>
+              <Link
+                activeProps={{ className: 'bg-white text-blue-700 shadow-sm' }}
+                aria-label={item.label}
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-sm font-semibold text-slate-600"
+                key={item.to}
+                to={item.to}
+                title={item.label}
+              >
                 <item.icon className="size-4" />
               </Link>
             ))}
@@ -157,7 +167,7 @@ function SecurityLoading() {
   )
 }
 
-function SecurityStatusError({ message, onRetry }: { message: string, onRetry: () => void }) {
+function SecurityStatusError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="grid h-screen min-h-screen place-items-center bg-slate-50 px-4 text-slate-900">
       <div className="grid w-full max-w-sm gap-4 rounded-lg border border-red-200 bg-white p-6 shadow-sm shadow-slate-200/60">
@@ -170,7 +180,9 @@ function SecurityStatusError({ message, onRetry }: { message: string, onRetry: (
             <p className="mt-1 text-sm leading-6 text-slate-600">{message}</p>
           </div>
         </div>
-        <Button onClick={onRetry} variant="secondary">重试</Button>
+        <Button onClick={onRetry} variant="secondary">
+          重试
+        </Button>
       </div>
     </div>
   )
@@ -200,13 +212,7 @@ function SecurityLockScreen({
             <h1 className="text-lg font-bold">访问受保护</h1>
           </div>
         </div>
-        <Input
-          autoFocus
-          value={password}
-          onChange={(event) => onPasswordChange(event.target.value)}
-          placeholder="访问密码"
-          type="password"
-        />
+        <Input autoFocus value={password} onChange={(event) => onPasswordChange(event.target.value)} placeholder="访问密码" type="password" />
         {error ? (
           <InlineAlert variant="error" onClose={onErrorClose}>
             {error}

@@ -12,8 +12,7 @@ const copyText = async (value: string) => {
   await navigator.clipboard.writeText(value)
 }
 
-const resultDownloadableId = (result: ParseResult, index: number) =>
-  String(result.job?.id ?? result.data?.record_id ?? result.fsId ?? index)
+const resultDownloadableId = (result: ParseResult, index: number) => String(result.job?.id ?? result.data?.record_id ?? result.fsId ?? index)
 
 const downloadableFromResult = (result: ParseResult, index: number): DownloadableItem | null => {
   const url = result.data?.urls[0]
@@ -78,7 +77,9 @@ export function ParseExecutionDrawer({
         <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-bold text-slate-900">解析队列</h3>
-            <p className="mt-1 text-sm text-slate-500">{activeCount} 处理中 · {successCount} 成功 · {failedCount} 失败 · {results.length} 结果</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {activeCount} 处理中 · {successCount} 成功 · {failedCount} 失败 · {results.length} 结果
+            </p>
           </div>
           <button className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" type="button" aria-label="关闭" onClick={onClose}>
             <X className="size-5" />
@@ -98,7 +99,9 @@ export function ParseExecutionDrawer({
                 type="button"
               >
                 <span>{tab.label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-blue-50 text-blue-700' : 'bg-white text-slate-500'}`}>{tab.count}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-blue-50 text-blue-700' : 'bg-white text-slate-500'}`}>
+                  {tab.count}
+                </span>
               </button>
             ))}
           </div>
@@ -122,13 +125,7 @@ export function ParseExecutionDrawer({
   )
 }
 
-function QueuePanel({
-  queue,
-  onDeleteWaitingItem,
-}: {
-  queue: QueuedFile[]
-  onDeleteWaitingItem: (fsId: number) => void
-}) {
+function QueuePanel({ queue, onDeleteWaitingItem }: { queue: QueuedFile[]; onDeleteWaitingItem: (fsId: number) => void }) {
   const pagination = usePagination(queue, 5)
   return (
     <div className="grid gap-3">
@@ -146,16 +143,12 @@ function QueuePanel({
   )
 }
 
-function QueueItemCard({
-  item,
-  onDeleteWaitingItem,
-}: {
-  item: QueuedFile
-  onDeleteWaitingItem: (fsId: number) => void
-}) {
+function QueueItemCard({ item, onDeleteWaitingItem }: { item: QueuedFile; onDeleteWaitingItem: (fsId: number) => void }) {
   const canDelete = item.status === 'waiting'
   return (
-    <div className={`overflow-hidden rounded-lg border p-3 ${item.status === 'failed' ? 'border-red-200 bg-red-50/40' : item.status === 'running' ? 'border-blue-200 bg-blue-50/30' : 'border-slate-200 bg-white'}`}>
+    <div
+      className={`overflow-hidden rounded-lg border p-3 ${item.status === 'failed' ? 'border-red-200 bg-red-50/40' : item.status === 'running' ? 'border-blue-200 bg-blue-50/30' : 'border-slate-200 bg-white'}`}
+    >
       <div className="flex min-w-0 items-start gap-2">
         <span className="mt-0.5 shrink-0">
           <StateIcon status={item.status} />
@@ -202,9 +195,7 @@ function ResultPanel({
   const pagination = usePagination(results, 5)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
-  const allDownloadable = results
-    .map(downloadableFromResult)
-    .filter((item): item is DownloadableItem => item !== null)
+  const allDownloadable = results.map(downloadableFromResult).filter((item): item is DownloadableItem => item !== null)
   const selectedItems = allDownloadable.filter((item) => selected.has(item.id))
   const pageDownloadable = pagination.pageItems
     .map((result, index) => downloadableFromResult(result, (pagination.page - 1) * pagination.pageSize + index))
@@ -303,14 +294,23 @@ function ResultCard({
 }) {
   const item = downloadableFromResult(result, index)
   return (
-    <div className={`overflow-hidden rounded-lg border p-3 ${result.status === 'success' ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/40'}`}>
+    <div
+      className={`overflow-hidden rounded-lg border p-3 ${result.status === 'success' ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/40'}`}
+    >
       <div className="flex min-w-0 items-start gap-2">
         {item ? (
-          <button aria-label="选择下载任务" className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-white/70" onClick={() => onToggleSelected(item, !selected.has(item.id))} type="button">
+          <button
+            aria-label="选择下载任务"
+            className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-white/70"
+            onClick={() => onToggleSelected(item, !selected.has(item.id))}
+            type="button"
+          >
             {selected.has(item.id) ? <CheckSquare className="size-5 text-blue-600" /> : <Square className="size-5" />}
           </button>
         ) : (
-          <span className="mt-0.5 shrink-0"><StateIcon status={result.status} /></span>
+          <span className="mt-0.5 shrink-0">
+            <StateIcon status={result.status} />
+          </span>
         )}
         <div className="min-w-0 flex-1">
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
@@ -335,15 +335,7 @@ function ResultCard({
               <Clipboard className="size-4" />
               复制 UA
             </Button>
-            {item ? (
-              <DownloaderSendButton
-                downloaders={downloaders}
-                items={[item]}
-                menu={false}
-                pending={sending}
-                onSend={onSend}
-              />
-            ) : null}
+            {item ? <DownloaderSendButton downloaders={downloaders} items={[item]} menu={false} pending={sending} onSend={onSend} /> : null}
           </div>
         </div>
       ) : null}

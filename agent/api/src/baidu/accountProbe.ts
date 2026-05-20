@@ -107,10 +107,7 @@ export const probeBaiduAccountCookie = async (cookie: string): Promise<AccountPr
         durationMs: Date.now() - started,
       }
     }
-    const [uinfo, quota] = await Promise.all([
-      client.getAccountUInfo(normalizedCookie),
-      client.getQuota(normalizedCookie),
-    ])
+    const [uinfo, quota] = await Promise.all([client.getAccountUInfo(normalizedCookie), client.getQuota(normalizedCookie)])
     const uk = String(uinfo.uk ?? '')
     const isSvip = template.result?.is_svip === 1 || template.result?.is_evip === 1 || uinfo.vip_type === 2
     const vipType = isSvip ? 'svip' : template.result?.is_vip === 1 || uinfo.vip_type === 1 ? 'vip' : 'normal'
@@ -202,23 +199,23 @@ export const probeBaiduOpenPlatform = async (
   try {
     const token = accessTokenOverride
       ? {
-        accessToken: accessTokenOverride,
-        refreshToken: normalizedRefreshToken,
-        expiresIn: 0,
-        tokenExpiresAt: null,
-      }
-      : options?.skipRefresh
-        ? {
-          accessToken: '',
+          accessToken: accessTokenOverride,
           refreshToken: normalizedRefreshToken,
           expiresIn: 0,
           tokenExpiresAt: null,
         }
+      : options?.skipRefresh
+        ? {
+            accessToken: '',
+            refreshToken: normalizedRefreshToken,
+            expiresIn: 0,
+            tokenExpiresAt: null,
+          }
         : await renewOpenPlatformToken(normalizedRefreshToken, {
-          clientKey: options?.clientKey,
-          secretKey: options?.secretKey,
-          serverUse: options?.serverUse,
-        })
+            clientKey: options?.clientKey,
+            secretKey: options?.secretKey,
+            serverUse: options?.serverUse,
+          })
     const accessToken = accessTokenOverride || token.accessToken
     if (!accessToken) throw badRequest('OPEN_PLATFORM_ACCESS_TOKEN_MISSING', '开放平台账号缺少 access_token')
     const [uinfo, quota, membership] = await Promise.all([
@@ -300,22 +297,27 @@ export const probeBaiduOpenPlatform = async (
   }
 }
 
-const boolValue = (value?: boolean | null) => value === undefined ? null : value
+const boolValue = (value?: boolean | null) => (value === undefined ? null : value)
 
-export const recordAccountHealthCheck = (accountId: number, result: AccountProbeResult | Omit<AccountProbeResult, 'status'> & { status: 'skipped_locked' }) => {
-  db.insert(accountHealthChecks).values({
-    accountId,
-    status: result.status,
-    code: result.code,
-    message: result.message.slice(0, 500),
-    deterministic: result.deterministic,
-    loginValid: boolValue(result.loginValid),
-    bdstokenValid: boolValue(result.bdstokenValid),
-    isSvip: boolValue(result.isSvip),
-    quotaTotalBytes: result.quotaTotalBytes ?? null,
-    quotaUsedBytes: result.quotaUsedBytes ?? null,
-    quotaFreeBytes: result.quotaFreeBytes ?? null,
-    durationMs: result.durationMs,
-    createdAt: new Date(),
-  }).run()
+export const recordAccountHealthCheck = (
+  accountId: number,
+  result: AccountProbeResult | (Omit<AccountProbeResult, 'status'> & { status: 'skipped_locked' }),
+) => {
+  db.insert(accountHealthChecks)
+    .values({
+      accountId,
+      status: result.status,
+      code: result.code,
+      message: result.message.slice(0, 500),
+      deterministic: result.deterministic,
+      loginValid: boolValue(result.loginValid),
+      bdstokenValid: boolValue(result.bdstokenValid),
+      isSvip: boolValue(result.isSvip),
+      quotaTotalBytes: result.quotaTotalBytes ?? null,
+      quotaUsedBytes: result.quotaUsedBytes ?? null,
+      quotaFreeBytes: result.quotaFreeBytes ?? null,
+      durationMs: result.durationMs,
+      createdAt: new Date(),
+    })
+    .run()
 }

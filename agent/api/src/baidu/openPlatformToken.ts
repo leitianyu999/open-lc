@@ -36,8 +36,7 @@ const appErrorInfo = (error: unknown) => {
   return { code, message: normalized.message }
 }
 
-const refreshAccount = (accountId: number) =>
-  db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
+const refreshAccount = (accountId: number) => db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
 
 export const recordAccountTokenEvent = (input: {
   accountId: number
@@ -51,18 +50,20 @@ export const recordAccountTokenEvent = (input: {
   accessTokenUsableAfter?: boolean | null
   tokenExpiresAt?: Date | null
 }) => {
-  db.insert(accountTokenEvents).values({
-    accountId: input.accountId,
-    parseJobId: input.parseJobId ?? null,
-    trigger: input.trigger,
-    action: input.action,
-    status: input.status,
-    code: input.code ?? null,
-    message: input.message,
-    accessTokenUsableBefore: input.accessTokenUsableBefore ?? null,
-    accessTokenUsableAfter: input.accessTokenUsableAfter ?? null,
-    tokenExpiresAt: input.tokenExpiresAt ?? null,
-  }).run()
+  db.insert(accountTokenEvents)
+    .values({
+      accountId: input.accountId,
+      parseJobId: input.parseJobId ?? null,
+      trigger: input.trigger,
+      action: input.action,
+      status: input.status,
+      code: input.code ?? null,
+      message: input.message,
+      accessTokenUsableBefore: input.accessTokenUsableBefore ?? null,
+      accessTokenUsableAfter: input.accessTokenUsableAfter ?? null,
+      tokenExpiresAt: input.tokenExpiresAt ?? null,
+    })
+    .run()
 }
 
 export const cleanupAccountTokenEvents = () => {
@@ -72,15 +73,15 @@ export const cleanupAccountTokenEvents = () => {
 
 export const listAccountTokenEvents = (accountId: number, page: number, pageSize: number) => {
   const offset = (page - 1) * pageSize
-  const items = db.select().from(accountTokenEvents)
+  const items = db
+    .select()
+    .from(accountTokenEvents)
     .where(eq(accountTokenEvents.accountId, accountId))
     .orderBy(desc(accountTokenEvents.id))
     .limit(pageSize)
     .offset(offset)
     .all()
-  const [total] = db.select({ value: sql<number>`COUNT(*)` }).from(accountTokenEvents)
-    .where(eq(accountTokenEvents.accountId, accountId))
-    .all()
+  const [total] = db.select({ value: sql<number>`COUNT(*)` }).from(accountTokenEvents).where(eq(accountTokenEvents.accountId, accountId)).all()
   return {
     items,
     page,
@@ -100,32 +101,38 @@ const updateTokenSummary = (input: {
   refreshToken?: string | null
   tokenExpiresAt?: Date | null
 }) => {
-  db.update(baiduAccounts).set({
-    tokenStatus: input.tokenStatus,
-    tokenCheckedAt: input.tokenCheckedAt,
-    tokenMessage: input.tokenMessage.slice(0, 300),
-    tokenLastErrorCode: input.tokenLastErrorCode ?? null,
-    tokenLastRefreshedAt: input.tokenLastRefreshedAt ?? null,
-    accessToken: input.accessToken === undefined ? undefined : input.accessToken,
-    refreshToken: input.refreshToken === undefined ? undefined : input.refreshToken,
-    tokenExpiresAt: input.tokenExpiresAt === undefined ? undefined : input.tokenExpiresAt,
-    updatedAt: new Date(),
-  }).where(eq(baiduAccounts.id, input.accountId)).run()
+  db.update(baiduAccounts)
+    .set({
+      tokenStatus: input.tokenStatus,
+      tokenCheckedAt: input.tokenCheckedAt,
+      tokenMessage: input.tokenMessage.slice(0, 300),
+      tokenLastErrorCode: input.tokenLastErrorCode ?? null,
+      tokenLastRefreshedAt: input.tokenLastRefreshedAt ?? null,
+      accessToken: input.accessToken === undefined ? undefined : input.accessToken,
+      refreshToken: input.refreshToken === undefined ? undefined : input.refreshToken,
+      tokenExpiresAt: input.tokenExpiresAt === undefined ? undefined : input.tokenExpiresAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduAccounts.id, input.accountId))
+    .run()
 }
 
 const markAccountReimportRequired = (account: BaiduAccount, code: string, message: string, tokenCheckedAt: Date) => {
-  db.update(baiduAccounts).set({
-    status: 'disabled',
-    reason: message.slice(0, 300),
-    disabledSource: 'open_platform_reimport_required',
-    lastFailureAt: new Date(),
-    lastFailureCode: code,
-    tokenStatus: 'reimport_required',
-    tokenCheckedAt,
-    tokenMessage: message.slice(0, 300),
-    tokenLastErrorCode: code,
-    updatedAt: new Date(),
-  }).where(eq(baiduAccounts.id, account.id)).run()
+  db.update(baiduAccounts)
+    .set({
+      status: 'disabled',
+      reason: message.slice(0, 300),
+      disabledSource: 'open_platform_reimport_required',
+      lastFailureAt: new Date(),
+      lastFailureCode: code,
+      tokenStatus: 'reimport_required',
+      tokenCheckedAt,
+      tokenMessage: message.slice(0, 300),
+      tokenLastErrorCode: code,
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduAccounts.id, account.id))
+    .run()
 
   if (account.status !== 'disabled' || account.disabledSource !== 'open_platform_reimport_required' || account.reason !== message.slice(0, 300)) {
     recordAccountStatusEvent({
@@ -143,15 +150,18 @@ const markAccountReimportRequired = (account: BaiduAccount, code: string, messag
 
 const recoverAccountAfterTokenSuccess = (account: BaiduAccount) => {
   if (account.status === 'disabled' && account.disabledSource === 'open_platform_reimport_required') {
-    db.update(baiduAccounts).set({
-      status: 'active',
-      reason: '',
-      disabledSource: null,
-      cooldownUntil: null,
-      lockedUntil: null,
-      lastFailureCode: null,
-      updatedAt: new Date(),
-    }).where(eq(baiduAccounts.id, account.id)).run()
+    db.update(baiduAccounts)
+      .set({
+        status: 'active',
+        reason: '',
+        disabledSource: null,
+        cooldownUntil: null,
+        lockedUntil: null,
+        lastFailureCode: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(baiduAccounts.id, account.id))
+      .run()
     recordAccountStatusEvent({
       accountId: account.id,
       oldStatus: account.status,
@@ -173,12 +183,7 @@ const validateAccessToken = async (accessToken: string) => {
   ])
 }
 
-export const setOpenPlatformReimportRequired = (input: {
-  accountId: number
-  code: string
-  message: string
-  tokenCheckedAt?: Date
-}) => {
+export const setOpenPlatformReimportRequired = (input: { accountId: number; code: string; message: string; tokenCheckedAt?: Date }) => {
   const account = refreshAccount(input.accountId)
   if (account) {
     markAccountReimportRequired(account, input.code, input.message, input.tokenCheckedAt ?? new Date())
@@ -192,11 +197,14 @@ export const setOpenPlatformReimportRequired = (input: {
   })
 }
 
-export const verifyOpenPlatformToken = async (account: BaiduAccount, options: {
-  trigger: OpenPlatformTokenTrigger
-  parseJobId?: number | null
-  allowRefreshFallback?: boolean
-}): Promise<OpenPlatformTokenCheckResult> => {
+export const verifyOpenPlatformToken = async (
+  account: BaiduAccount,
+  options: {
+    trigger: OpenPlatformTokenTrigger
+    parseJobId?: number | null
+    allowRefreshFallback?: boolean
+  },
+): Promise<OpenPlatformTokenCheckResult> => {
   const tokenCheckedAt = new Date()
   const allowRefreshFallback = options.allowRefreshFallback !== false
   const accessToken = account.accessToken?.trim() ?? ''

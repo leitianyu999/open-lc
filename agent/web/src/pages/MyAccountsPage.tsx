@@ -36,10 +36,7 @@ function MyAccountsContent() {
   })
 
   const refresh = async () => {
-    await Promise.all([
-      api.api.local.accounts.$get.invalidate(),
-      api.api.local.me.$get.invalidate(),
-    ])
+    await Promise.all([api.api.local.accounts.$get.invalidate(), api.api.local.me.$get.invalidate()])
   }
 
   const refreshDetailIfOpen = async (accountId: number) => {
@@ -113,10 +110,7 @@ function MyAccountsContent() {
 
   const items = query.data?.data ?? []
   const showCookieAccountAddButton = settingsQuery.data?.data.items.showCookieAccountAddButton?.value === 'true'
-  const selectedAccount = useMemo(
-    () => items.find((item) => item.id === selectedAccountId) ?? null,
-    [items, selectedAccountId],
-  )
+  const selectedAccount = useMemo(() => items.find((item) => item.id === selectedAccountId) ?? null, [items, selectedAccountId])
 
   const securityStatusQuery = api.api.security.status.$get.useQuery()
   const ensureConsent = (type: RiskConsentType, action: () => void) => {
@@ -167,7 +161,9 @@ function MyAccountsContent() {
                 <tr key={account.id}>
                   <td className="p-3">
                     <div className="font-semibold">{account.baiduName || account.label}</div>
-                    <div className="mt-1 text-xs text-slate-500">#{account.id} · uk {account.uk || '-'} · 权重 {account.weight}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      #{account.id} · uk {account.uk || '-'} · 权重 {account.weight}
+                    </div>
                     {account.reason ? <div className="mt-1 max-w-[320px] break-words text-xs text-red-600">{account.reason}</div> : null}
                   </td>
                   <td className="p-3 text-sm text-slate-600">{account.credentialSource === 'open_platform' ? '开放平台' : 'Cookie'}</td>
@@ -181,12 +177,16 @@ function MyAccountsContent() {
                   </td>
                   <td className="p-3 text-xs text-slate-500">
                     <div>成功 {formatDateTime(account.lastSuccessAt)}</div>
-                    <div className="mt-1">失败 {account.lastFailureCode || '-'} · 冷却至 {formatDateTime(account.cooldownUntil) || '-'}</div>
+                    <div className="mt-1">
+                      失败 {account.lastFailureCode || '-'} · 冷却至 {formatDateTime(account.cooldownUntil) || '-'}
+                    </div>
                     <div className="mt-1">Token {formatDateTime(account.tokenCheckedAt) || '-'}</div>
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => setSelectedAccountId(account.id)} size="sm" variant="secondary">详情</Button>
+                      <Button onClick={() => setSelectedAccountId(account.id)} size="sm" variant="secondary">
+                        详情
+                      </Button>
                       <Button
                         disabled={statusMutation.isPending}
                         onClick={() => updateStatus(account, account.status === 'active' ? 'disabled' : 'active')}
@@ -228,12 +228,7 @@ function MyAccountsContent() {
         />
       ) : null}
 
-      <Modal
-        open={accountModalOpen}
-        title="添加 Cookie 账号"
-        onClose={() => setAccountModalOpen(false)}
-        maxWidthClassName="max-w-3xl"
-      >
+      <Modal open={accountModalOpen} title="添加 Cookie 账号" onClose={() => setAccountModalOpen(false)} maxWidthClassName="max-w-3xl">
         <OwnedAccountForm
           credentialSource="cookie"
           onDone={async () => {
@@ -243,12 +238,7 @@ function MyAccountsContent() {
         />
       </Modal>
 
-      <Modal
-        open={openPlatformModalOpen}
-        title="添加开放平台账号"
-        onClose={() => setOpenPlatformModalOpen(false)}
-        maxWidthClassName="max-w-5xl"
-      >
+      <Modal open={openPlatformModalOpen} title="添加开放平台账号" onClose={() => setOpenPlatformModalOpen(false)} maxWidthClassName="max-w-5xl">
         <OwnedOpenPlatformForm
           onDone={async () => {
             await refresh()
@@ -271,13 +261,7 @@ function MyAccountsContent() {
   )
 }
 
-function OwnedAccountForm({
-  credentialSource,
-  onDone,
-}: {
-  credentialSource: CredentialSource
-  onDone: () => Promise<void>
-}) {
+function OwnedAccountForm({ credentialSource, onDone }: { credentialSource: CredentialSource; onDone: () => Promise<void> }) {
   const [label, setLabel] = useState('')
   const [weight, setWeight] = useState('100')
   const [cookie, setCookie] = useState('')
@@ -330,10 +314,15 @@ function OwnedAccountForm({
         <Input min="1" type="number" value={weight} onChange={(event) => setWeight(event.target.value)} />
       </Field>
       <Field label="完整 Cookie">
-        <Textarea className="min-h-32" value={cookie} onChange={(event) => {
-          setCookie(event.target.value)
-          setProbe(null)
-        }} placeholder="BDUSS=...; STOKEN=..." />
+        <Textarea
+          className="min-h-32"
+          value={cookie}
+          onChange={(event) => {
+            setCookie(event.target.value)
+            setProbe(null)
+          }}
+          placeholder="BDUSS=...; STOKEN=..."
+        />
       </Field>
       <div className="flex flex-wrap gap-2">
         <Button disabled={!cookie.trim() || probeMutation.isPending} onClick={runProbe} type="button" variant="secondary">
@@ -348,19 +337,19 @@ function OwnedAccountForm({
       {probe ? (
         <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
           <div className="font-bold">{probe.action === 'update' ? `检测通过，将更新账号 #${probe.existingAccountId}` : '检测通过，可添加账号'}</div>
-          <div>{probe.health.baiduName || '未命名'} · uk {probe.health.uk || '-'}</div>
-          <div>SVIP {probe.health.isSvip ? '是' : '否'} · 剩余空间 {formatBytes(probe.health.quotaFreeBytes ?? 0)}</div>
+          <div>
+            {probe.health.baiduName || '未命名'} · uk {probe.health.uk || '-'}
+          </div>
+          <div>
+            SVIP {probe.health.isSvip ? '是' : '否'} · 剩余空间 {formatBytes(probe.health.quotaFreeBytes ?? 0)}
+          </div>
         </div>
       ) : null}
     </form>
   )
 }
 
-function OwnedOpenPlatformForm({
-  onDone,
-}: {
-  onDone: () => Promise<void>
-}) {
+function OwnedOpenPlatformForm({ onDone }: { onDone: () => Promise<void> }) {
   const [label, setLabel] = useState('')
   const [weight, setWeight] = useState('100')
   const [refreshToken, setRefreshToken] = useState('')
@@ -424,10 +413,15 @@ function OwnedOpenPlatformForm({
         <Input min="1" type="number" value={weight} onChange={(event) => setWeight(event.target.value)} />
       </Field>
       <Field label="refresh_token">
-        <Textarea className="min-h-32" value={refreshToken} onChange={(event) => {
-          setRefreshToken(event.target.value)
-          resetProbe()
-        }} placeholder="122.xxxxxx..." />
+        <Textarea
+          className="min-h-32"
+          value={refreshToken}
+          onChange={(event) => {
+            setRefreshToken(event.target.value)
+            resetProbe()
+          }}
+          placeholder="122.xxxxxx..."
+        />
       </Field>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
         <div className="font-semibold text-slate-800">使用 OpenList 提供的参数</div>
@@ -484,8 +478,12 @@ function OwnedOpenPlatformForm({
       {probe ? (
         <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
           <div className="font-bold">{probe.action === 'update' ? `检测通过，将更新账号 #${probe.existingAccountId}` : '检测通过，可添加开放平台账号'}</div>
-          <div>{probe.health.baiduName || '未命名'} · uk {probe.health.uk || '-'}</div>
-          <div>SVIP {probe.health.isSvip ? '是' : '否'} · 剩余空间 {formatBytes(probe.health.quotaFreeBytes ?? 0)}</div>
+          <div>
+            {probe.health.baiduName || '未命名'} · uk {probe.health.uk || '-'}
+          </div>
+          <div>
+            SVIP {probe.health.isSvip ? '是' : '否'} · 剩余空间 {formatBytes(probe.health.quotaFreeBytes ?? 0)}
+          </div>
           {probe.health.tokenExpiresAt ? <div>access_token 到期 {formatDateTime(probe.health.tokenExpiresAt)}</div> : null}
         </div>
       ) : null}
@@ -504,11 +502,8 @@ function OwnedAccountDetailCard({
   loading: boolean
   onClose: () => void
 }) {
-  const credentialMode = detail?.account.credentialSource === 'open_platform'
-    ? detail.account.openPlatformServerUse === false
-      ? '自定义 AK/SK'
-      : 'OpenList 参数'
-    : 'Cookie'
+  const credentialMode =
+    detail?.account.credentialSource === 'open_platform' ? (detail.account.openPlatformServerUse === false ? '自定义 AK/SK' : 'OpenList 参数') : 'Cookie'
 
   return (
     <Panel className="grid gap-4">
@@ -516,7 +511,9 @@ function OwnedAccountDetailCard({
         <div>
           <h3 className="text-lg font-bold">{account.baiduName || account.label}</h3>
         </div>
-        <Button onClick={onClose} variant="ghost">收起</Button>
+        <Button onClick={onClose} variant="ghost">
+          收起
+        </Button>
       </div>
       {loading || !detail ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">账号详情加载中...</div>
@@ -556,7 +553,7 @@ function OwnedAccountDetailCard({
   )
 }
 
-function Metric({ label, value }: { label: string, value: string }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -565,7 +562,7 @@ function Metric({ label, value }: { label: string, value: string }) {
   )
 }
 
-function Info({ label, value }: { label: string, value: string }) {
+function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -574,7 +571,7 @@ function Info({ label, value }: { label: string, value: string }) {
   )
 }
 
-function SimpleList({ title, rows, empty }: { title: string, rows: string[], empty: string }) {
+function SimpleList({ title, rows, empty }: { title: string; rows: string[]; empty: string }) {
   return (
     <div className="rounded-lg border border-slate-200">
       <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">{title}</div>
@@ -583,7 +580,9 @@ function SimpleList({ title, rows, empty }: { title: string, rows: string[], emp
       ) : (
         <div className="divide-y divide-slate-100">
           {rows.map((row, index) => (
-            <div className="px-3 py-2 text-sm text-slate-600" key={`${title}-${index}`}>{row}</div>
+            <div className="px-3 py-2 text-sm text-slate-600" key={`${title}-${index}`}>
+              {row}
+            </div>
           ))}
         </div>
       )}

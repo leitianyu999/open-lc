@@ -5,15 +5,7 @@ import { appSettings } from '../db/schema'
 import { badRequest } from '../lib/errors'
 
 export type SettingSource = 'database' | 'env' | 'default'
-export type SettingsGroup =
-  | 'desktop'
-  | 'broker'
-  | 'account'
-  | 'download'
-  | 'parse'
-  | 'health'
-  | 'baidu'
-  | 'deployment'
+export type SettingsGroup = 'desktop' | 'broker' | 'account' | 'download' | 'parse' | 'health' | 'baidu' | 'deployment'
 
 type SettingType = 'number' | 'string' | 'boolean' | 'list'
 
@@ -457,12 +449,9 @@ export type SettingName = keyof typeof definitions
 
 const definitionEntries = Object.entries(definitions) as Array<[SettingName, SettingDefinition]>
 
-export const settingKeys = Object.fromEntries(
-  Object.entries(definitions).map(([name, definition]) => [name, definition.key]),
-) as Record<SettingName, string>
+export const settingKeys = Object.fromEntries(Object.entries(definitions).map(([name, definition]) => [name, definition.key])) as Record<SettingName, string>
 
-export const readSettingRaw = (key: string) =>
-  db.select().from(appSettings).where(eq(appSettings.key, key)).get()?.value.trim() ?? ''
+export const readSettingRaw = (key: string) => db.select().from(appSettings).where(eq(appSettings.key, key)).get()?.value.trim() ?? ''
 
 const writeSettingRaw = (key: string, value: string) => {
   const trimmed = value.trim()
@@ -470,7 +459,8 @@ const writeSettingRaw = (key: string, value: string) => {
     db.delete(appSettings).where(eq(appSettings.key, key)).run()
     return
   }
-  db.insert(appSettings).values({ key, value: trimmed })
+  db.insert(appSettings)
+    .values({ key, value: trimmed })
     .onConflictDoUpdate({ target: appSettings.key, set: { value: trimmed, updatedAt: new Date() } })
     .run()
 }
@@ -490,7 +480,9 @@ const validateNumberSetting = (definition: SettingDefinition, value: unknown) =>
 
 const validateBooleanSetting = (definition: SettingDefinition, value: unknown) => {
   if (typeof value === 'boolean') return String(value)
-  const raw = String(value ?? '').trim().toLowerCase()
+  const raw = String(value ?? '')
+    .trim()
+    .toLowerCase()
   if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on') return 'true'
   if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return 'false'
   throw badRequest('BAD_SETTING_VALUE', `${definition.label}必须是布尔值`)
@@ -536,8 +528,7 @@ const valueWithSource = (definition: SettingDefinition) => {
   return { value: definition.defaultValue, source: 'default' as SettingSource }
 }
 
-const publicValue = (definition: SettingDefinition, value: string) =>
-  definition.sensitive && value ? '' : value
+const publicValue = (definition: SettingDefinition, value: string) => (definition.sensitive && value ? '' : value)
 
 const displayValue = (definition: SettingDefinition, value: string) => {
   if (!definition.sensitive) return value
@@ -577,8 +568,7 @@ export const getSettingNumber = (name: SettingName) => {
   return Number.isFinite(value) ? value : fallback
 }
 
-export const getSettingBoolean = (name: SettingName) =>
-  valueWithSource(definitions[name]).value === 'true'
+export const getSettingBoolean = (name: SettingName) => valueWithSource(definitions[name]).value === 'true'
 
 export const setSetting = (name: SettingName, value: unknown) => {
   const definition = definitions[name]
@@ -589,9 +579,7 @@ export const setSetting = (name: SettingName, value: unknown) => {
 
 export const setSettings = (values: Record<string, unknown>) => {
   for (const [inputName, value] of Object.entries(values)) {
-    const name = inputName in definitions
-      ? inputName as SettingName
-      : definitionEntries.find(([, definition]) => definition.key === inputName)?.[0]
+    const name = inputName in definitions ? (inputName as SettingName) : definitionEntries.find(([, definition]) => definition.key === inputName)?.[0]
     if (!name) throw badRequest('UNKNOWN_SETTING', `未知设置项: ${inputName}`)
     setSetting(name, value)
   }
@@ -611,9 +599,10 @@ export const getSettingsSnapshot = () => {
       return [name, current.source]
     }),
   ) as Record<SettingName, SettingSource>
-  const items = Object.fromEntries(
-    definitionEntries.map(([name, definition]) => [name, publicDefinition(name, definition)]),
-  ) as Record<SettingName, ReturnType<typeof publicDefinition>>
+  const items = Object.fromEntries(definitionEntries.map(([name, definition]) => [name, publicDefinition(name, definition)])) as Record<
+    SettingName,
+    ReturnType<typeof publicDefinition>
+  >
 
   return {
     groups: {

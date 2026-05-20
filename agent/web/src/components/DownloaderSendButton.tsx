@@ -25,9 +25,7 @@ export function DownloaderSendButton({
   const defaultDownloader = enabled.find((item) => item.isDefault) ?? enabled[0] ?? null
   const disabled = pending || items.length === 0 || !defaultDownloader
   const triggerSizeClassName = size === 'md' ? 'min-h-10' : 'min-h-8'
-  const label = defaultDownloader
-    ? `推送${items.length > 1 ? ` ${items.length} 条` : ''}到 ${defaultDownloader.name}`
-    : '推送到下载器'
+  const label = defaultDownloader ? `推送${items.length > 1 ? ` ${items.length} 条` : ''}到 ${defaultDownloader.name}` : '推送到下载器'
 
   return (
     <div className="relative inline-flex">

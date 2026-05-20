@@ -7,7 +7,7 @@ export type ServerPage<T> = {
   total: number
 }
 
-export const useServerPagination = <T,>(
+export const useServerPagination = <T>(
   data: ServerPage<T> | undefined,
   options: {
     page: number
@@ -25,12 +25,15 @@ export const useServerPagination = <T,>(
     if (requestedPage > totalPages) setPage(totalPages)
   }, [requestedPage, setPage, totalPages])
 
-  return useMemo(() => ({
-    page,
-    pageItems: data?.items ?? [],
-    pageSize,
-    setPage,
-    totalItems,
-    totalPages,
-  }), [data?.items, page, pageSize, setPage, totalItems, totalPages])
+  return useMemo(
+    () => ({
+      page,
+      pageItems: data?.items ?? [],
+      pageSize,
+      setPage,
+      totalItems,
+      totalPages,
+    }),
+    [data?.items, page, pageSize, setPage, totalItems, totalPages],
+  )
 }

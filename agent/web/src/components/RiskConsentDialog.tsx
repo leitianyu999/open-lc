@@ -3,11 +3,14 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { api, messageFromError, type RiskConsentType } from '../api'
 import { Button, InlineAlert, Modal } from './ui'
 
-const consentCopy: Record<RiskConsentType, {
-  title: string
-  intro: string
-  items: string[]
-}> = {
+const consentCopy: Record<
+  RiskConsentType,
+  {
+    title: string
+    intro: string
+    items: string[]
+  }
+> = {
   open_platform_account: {
     title: '开放平台账号责任同意书',
     intro: '继续添加开放平台账号前，请确认你理解并接受以下风险与责任。',
@@ -80,12 +83,7 @@ export function RiskConsentDialog({
   }
 
   return (
-    <Modal
-      open={open && Boolean(copy)}
-      title={copy?.title ?? '风险提示与责任同意'}
-      onClose={cancel}
-      maxWidthClassName="max-w-2xl"
-    >
+    <Modal open={open && Boolean(copy)} title={copy?.title ?? '风险提示与责任同意'} onClose={cancel} maxWidthClassName="max-w-2xl">
       {copy ? (
         <div className="grid gap-4">
           <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
@@ -101,17 +99,18 @@ export function RiskConsentDialog({
             ))}
           </div>
           <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-            <input
-              checked={checked}
-              className="mt-1 size-4 accent-blue-600"
-              onChange={(event) => setChecked(event.target.checked)}
-              type="checkbox"
-            />
+            <input checked={checked} className="mt-1 size-4 accent-blue-600" onChange={(event) => setChecked(event.target.checked)} type="checkbox" />
             <span>我已阅读并理解上述风险，确认由我自行承担相应责任。</span>
           </label>
-          {error ? <InlineAlert variant="error" onClose={() => setError(null)}>{error}</InlineAlert> : null}
+          {error ? (
+            <InlineAlert variant="error" onClose={() => setError(null)}>
+              {error}
+            </InlineAlert>
+          ) : null}
           <div className="flex flex-wrap justify-end gap-2">
-            <Button disabled={mutation.isPending} onClick={cancel} variant="secondary">取消</Button>
+            <Button disabled={mutation.isPending} onClick={cancel} variant="secondary">
+              取消
+            </Button>
             <Button disabled={!checked || mutation.isPending} onClick={accept}>
               {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
               同意并继续

@@ -59,7 +59,8 @@ const readMigrationFiles = (migrationsFolder: string): MigrationFile[] => {
 }
 
 const listUserObjects = (sqlite: Database) =>
-  sqlite.query<SqliteObject, []>(`
+  sqlite
+    .query<SqliteObject, []>(`
     SELECT type, name
     FROM sqlite_master
     WHERE type IN ('table', 'index', 'view', 'trigger')
@@ -72,17 +73,14 @@ const listUserObjects = (sqlite: Database) =>
         WHEN 'table' THEN 4
         ELSE 5
       END
-  `).all()
+  `)
+    .all()
 
 const tableExists = (sqlite: Database, table: string) =>
-  Boolean(sqlite.query<{ name: string }, [string]>(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
-  ).get(table))
+  Boolean(sqlite.query<{ name: string }, [string]>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table))
 
 const readAppliedMigrations = (sqlite: Database) =>
-  sqlite.query<AppliedMigrationRow, []>(
-    `SELECT hash, created_at FROM ${quoteIdentifier(migrationTable)} ORDER BY created_at ASC`,
-  ).all()
+  sqlite.query<AppliedMigrationRow, []>(`SELECT hash, created_at FROM ${quoteIdentifier(migrationTable)} ORDER BY created_at ASC`).all()
 
 const migrationHistoryMatches = (sqlite: Database, migrations: MigrationFile[]) => {
   const objects = listUserObjects(sqlite)
@@ -108,9 +106,7 @@ const migrationHistoryMatches = (sqlite: Database, migrations: MigrationFile[]) 
 
   return applied.every((row, index) => {
     const migration = migrations[index]
-    return Boolean(migration)
-      && row.hash === migration.hash
-      && Number(row.created_at) === migration.when
+    return Boolean(migration) && row.hash === migration.hash && Number(row.created_at) === migration.when
   })
 }
 

@@ -1,6 +1,15 @@
 import { and, asc, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
 import { db, sqlite } from '../db'
-import { accountHealthChecks, accountStatusEvents, accountTokenEvents, baiduAccounts, parseAttempts, parseRecords, type BaiduAccount, type User } from '../db/schema'
+import {
+  accountHealthChecks,
+  accountStatusEvents,
+  accountTokenEvents,
+  baiduAccounts,
+  parseAttempts,
+  parseRecords,
+  type BaiduAccount,
+  type User,
+} from '../db/schema'
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors'
 import { getAccountPolicy } from '../settings/service'
 import { probeBaiduAccountCookie, probeBaiduOpenPlatform, recordAccountHealthCheck, type AccountProbeResult } from './accountProbe'
@@ -20,8 +29,8 @@ type OpenPlatformCredentialInput = {
 
 const normalizeOpenPlatformCredential = (input: OpenPlatformCredentialInput) => {
   const serverUse = input.openPlatformServerUse === true
-  const clientKey = serverUse ? '' : input.openPlatformClientKey?.trim() ?? ''
-  const secretKey = serverUse ? '' : input.openPlatformSecretKey?.trim() ?? ''
+  const clientKey = serverUse ? '' : (input.openPlatformClientKey?.trim() ?? '')
+  const secretKey = serverUse ? '' : (input.openPlatformSecretKey?.trim() ?? '')
 
   if (!serverUse && (!clientKey || !secretKey)) {
     throw badRequest('OPEN_PLATFORM_CLIENT_CREDENTIALS_REQUIRED', '开放平台 AK/SK 不能为空')
@@ -59,12 +68,9 @@ const classifyFailure = (code: string, message: string): AccountFailureClass => 
     text.includes('未登录') ||
     text.includes('8001') ||
     text.includes('-6')
-  ) return 'expired'
-  if (
-    text.includes('限速') ||
-    text.includes('tsl=1') ||
-    text.includes('qdall01')
-  ) return 'limited'
+  )
+    return 'expired'
+  if (text.includes('限速') || text.includes('tsl=1') || text.includes('qdall01')) return 'limited'
   if (
     text.includes('baidu_page_expired') ||
     text.includes('baidu_cookie_or_account_restricted') ||
@@ -80,7 +86,8 @@ const classifyFailure = (code: string, message: string): AccountFailureClass => 
     text.includes('captcha') ||
     text.includes('-20') ||
     text.includes('验证码')
-  ) return 'cooldown'
+  )
+    return 'cooldown'
   if (
     text.includes('baidu_timeout') ||
     text.includes('baidu_http_failed') ||
@@ -90,7 +97,8 @@ const classifyFailure = (code: string, message: string): AccountFailureClass => 
     text.includes('http') ||
     text.includes('fetch failed') ||
     text.includes('econn')
-  ) return 'network'
+  )
+    return 'network'
   return 'unknown'
 }
 
@@ -107,19 +115,21 @@ export const recordAccountStatusEvent = (params: {
   parseJobId?: number | null
   parseRecordId?: number | null
 }) => {
-  db.insert(accountStatusEvents).values({
-    accountId: params.accountId,
-    oldStatus: params.oldStatus ?? null,
-    newStatus: params.newStatus,
-    oldReason: params.oldReason ?? null,
-    newReason: params.newReason ?? null,
-    source: params.source,
-    code: params.code ?? null,
-    message: params.message,
-    actorUserId: params.actorUserId ?? null,
-    parseJobId: params.parseJobId ?? null,
-    parseRecordId: params.parseRecordId ?? null,
-  }).run()
+  db.insert(accountStatusEvents)
+    .values({
+      accountId: params.accountId,
+      oldStatus: params.oldStatus ?? null,
+      newStatus: params.newStatus,
+      oldReason: params.oldReason ?? null,
+      newReason: params.newReason ?? null,
+      source: params.source,
+      code: params.code ?? null,
+      message: params.message,
+      actorUserId: params.actorUserId ?? null,
+      parseJobId: params.parseJobId ?? null,
+      parseRecordId: params.parseRecordId ?? null,
+    })
+    .run()
 }
 
 const tryLockAccount = (accountId: number) => {
@@ -130,35 +140,37 @@ const tryLockAccount = (accountId: number) => {
       lockedUntil,
       updatedAt: now,
     })
-    .where(and(
-      eq(baiduAccounts.id, accountId),
-      eq(baiduAccounts.status, 'active'),
-      or(isNull(baiduAccounts.lockedUntil), lt(baiduAccounts.lockedUntil, now)),
-      or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
-    ))
+    .where(
+      and(
+        eq(baiduAccounts.id, accountId),
+        eq(baiduAccounts.status, 'active'),
+        or(isNull(baiduAccounts.lockedUntil), lt(baiduAccounts.lockedUntil, now)),
+        or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+      ),
+    )
     .run()
   const locked = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
   return Boolean(locked?.lockedUntil && locked.lockedUntil.getTime() === lockedUntil.getTime())
 }
 
 export const releaseAccount = (accountId: number) => {
-  db.update(baiduAccounts)
-    .set({ lockedUntil: null, updatedAt: new Date() })
-    .where(eq(baiduAccounts.id, accountId))
-    .run()
+  db.update(baiduAccounts).set({ lockedUntil: null, updatedAt: new Date() }).where(eq(baiduAccounts.id, accountId)).run()
 }
 
-export const markAccountSuccess = (accountId: number, context?: { parseJobId?: number | null, parseRecordId?: number | null }) => {
+export const markAccountSuccess = (accountId: number, context?: { parseJobId?: number | null; parseRecordId?: number | null }) => {
   const before = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
-  db.update(baiduAccounts).set({
-    lockedUntil: null,
-    cooldownUntil: null,
-    status: 'active',
-    reason: '',
-    lastUsedAt: new Date(),
-    lastSuccessAt: new Date(),
-    updatedAt: new Date(),
-  }).where(eq(baiduAccounts.id, accountId)).run()
+  db.update(baiduAccounts)
+    .set({
+      lockedUntil: null,
+      cooldownUntil: null,
+      status: 'active',
+      reason: '',
+      lastUsedAt: new Date(),
+      lastSuccessAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduAccounts.id, accountId))
+    .run()
   if (before && (before.status !== 'active' || before.reason || before.lastFailureCode || before.cooldownUntil)) {
     recordAccountStatusEvent({
       accountId,
@@ -175,7 +187,12 @@ export const markAccountSuccess = (accountId: number, context?: { parseJobId?: n
   }
 }
 
-export const markAccountFailure = (accountId: number, code: string, message: string, context?: { parseJobId?: number | null, parseRecordId?: number | null }) => {
+export const markAccountFailure = (
+  accountId: number,
+  code: string,
+  message: string,
+  context?: { parseJobId?: number | null; parseRecordId?: number | null },
+) => {
   const before = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
   const failure = classifyFailure(code, message)
   const update: Partial<typeof baiduAccounts.$inferInsert> = {
@@ -216,15 +233,19 @@ export const markAccountFailure = (accountId: number, code: string, message: str
 
 export const acquireLocalAccount = (ownerUserId: number) => {
   const now = new Date()
-  const accounts = db.select().from(baiduAccounts)
-    .where(and(
-      eq(baiduAccounts.ownerUserId, ownerUserId),
-      eq(baiduAccounts.status, 'active'),
-      or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
-    ))
+  const accounts = db
+    .select()
+    .from(baiduAccounts)
+    .where(
+      and(
+        eq(baiduAccounts.ownerUserId, ownerUserId),
+        eq(baiduAccounts.status, 'active'),
+        or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+      ),
+    )
     .orderBy(desc(baiduAccounts.weight), asc(baiduAccounts.id))
     .all()
-    .sort((left, right) => (Math.random() * Math.max(1, right.weight)) - (Math.random() * Math.max(1, left.weight)))
+    .sort((left, right) => Math.random() * Math.max(1, right.weight) - Math.random() * Math.max(1, left.weight))
 
   for (const account of accounts) {
     if (tryLockAccount(account.id)) {
@@ -236,12 +257,16 @@ export const acquireLocalAccount = (ownerUserId: number) => {
 
 export const hasLocalAccountCandidate = (ownerUserId: number) => {
   const now = new Date()
-  const row = db.select({ value: sql<number>`COUNT(*)` }).from(baiduAccounts)
-    .where(and(
-      eq(baiduAccounts.ownerUserId, ownerUserId),
-      eq(baiduAccounts.status, 'active'),
-      or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
-    ))
+  const row = db
+    .select({ value: sql<number>`COUNT(*)` })
+    .from(baiduAccounts)
+    .where(
+      and(
+        eq(baiduAccounts.ownerUserId, ownerUserId),
+        eq(baiduAccounts.status, 'active'),
+        or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+      ),
+    )
     .get()
   return Number(row?.value ?? 0) > 0
 }
@@ -254,11 +279,13 @@ export const acquireAccountById = (accountId: number) => {
       lockedUntil,
       updatedAt: now,
     })
-    .where(and(
-      eq(baiduAccounts.id, accountId),
-      sql`${baiduAccounts.status} != 'disabled'`,
-      or(isNull(baiduAccounts.lockedUntil), lt(baiduAccounts.lockedUntil, now)),
-    ))
+    .where(
+      and(
+        eq(baiduAccounts.id, accountId),
+        sql`${baiduAccounts.status} != 'disabled'`,
+        or(isNull(baiduAccounts.lockedUntil), lt(baiduAccounts.lockedUntil, now)),
+      ),
+    )
     .run()
   const locked = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
   return locked?.lockedUntil?.getTime() === lockedUntil.getTime() ? locked : null
@@ -290,9 +317,7 @@ export const addAccount = async (input: {
   const cookie = credentialSource === 'cookie' ? normalizeBaiduCookie(input.cookie?.trim() ?? '') : ''
   const refreshToken = input.refreshToken?.trim() ?? ''
   const ownerUserId = input.ownerUserId ?? input.actor.id
-  const openPlatformCredential = credentialSource === 'open_platform'
-    ? normalizeOpenPlatformCredential(input)
-    : null
+  const openPlatformCredential = credentialSource === 'open_platform' ? normalizeOpenPlatformCredential(input) : null
 
   if (credentialSource === 'cookie') {
     if (!hasRequiredBaiduCookieFields(cookie)) throw badRequest('BAD_COOKIE', 'Cookie 至少需要包含 BDUSS')
@@ -300,9 +325,10 @@ export const addAccount = async (input: {
     throw badRequest('BAD_REFRESH_TOKEN', 'refresh_token 不能为空')
   }
 
-  const health = credentialSource === 'open_platform'
-    ? await probeBaiduOpenPlatform(refreshToken, openPlatformCredential ?? undefined)
-    : await probeBaiduAccountCookie(cookie)
+  const health =
+    credentialSource === 'open_platform'
+      ? await probeBaiduOpenPlatform(refreshToken, openPlatformCredential ?? undefined)
+      : await probeBaiduAccountCookie(cookie)
   const existing = health.uk ? db.select().from(baiduAccounts).where(eq(baiduAccounts.uk, health.uk)).get() : undefined
   if (health.status !== 'healthy' && (input.strictHealthy || !existing)) throw badRequest(health.code, health.message, health)
 
@@ -313,46 +339,49 @@ export const addAccount = async (input: {
       throw conflict('ACCOUNT_ALREADY_BOUND', `该百度账号已被用户 #${existing.ownerUserId} 绑定`)
     }
     const isHealthy = health.status === 'healthy'
-    db.update(baiduAccounts).set({
-      label,
-      ownerUserId,
-      cookie: credentialSource === 'cookie' ? cookie : existing.cookie,
-      credentialSource,
-      refreshToken: credentialSource === 'open_platform' ? (health.refreshToken ?? refreshToken) : null,
-      accessToken: credentialSource === 'open_platform' ? (health.accessToken ?? null) : null,
-      tokenExpiresAt: credentialSource === 'open_platform' ? (health.tokenExpiresAt ?? null) : null,
-      openPlatformDriver: credentialSource === 'open_platform' ? openPlatformCredential?.driver : null,
-      openPlatformClientKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.clientKey : null,
-      openPlatformSecretKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.secretKey : null,
-      openPlatformServerUse: credentialSource === 'open_platform' ? openPlatformCredential?.serverUse : null,
-      weight,
-      baiduName: health.baiduName ?? existing.baiduName,
-      vipType: health.vipType ?? existing.vipType,
-      status: isHealthy ? 'active' : 'disabled',
-      reason: isHealthy ? '' : health.message.slice(0, 300),
-      disabledSource: isHealthy ? null : health.disabledSource ?? 'health_transient_failure',
-      healthStatus: health.status,
-      healthMessage: health.message.slice(0, 300),
-      healthCheckedAt: new Date(),
-      loginValid: health.loginValid ?? null,
-      bdstokenValid: health.bdstokenValid ?? null,
-      isSvip: health.isSvip ?? null,
-      quotaTotalBytes: health.quotaTotalBytes ?? null,
-      quotaUsedBytes: health.quotaUsedBytes ?? null,
-      quotaFreeBytes: health.quotaFreeBytes ?? null,
-      healthConsecutiveFailures: isHealthy || health.deterministic ? 0 : (existing.healthConsecutiveFailures ?? 0) + 1,
-      healthLastErrorCode: isHealthy ? null : health.code,
-      tokenStatus: credentialSource === 'open_platform' ? (isHealthy ? 'valid' : 'unknown') : existing.tokenStatus,
-      tokenCheckedAt: credentialSource === 'open_platform' ? new Date() : existing.tokenCheckedAt,
-      tokenMessage: credentialSource === 'open_platform' ? health.message.slice(0, 300) : existing.tokenMessage,
-      tokenLastErrorCode: credentialSource === 'open_platform' ? (isHealthy ? null : health.code) : existing.tokenLastErrorCode,
-      tokenLastRefreshedAt: credentialSource === 'open_platform' && isHealthy ? new Date() : existing.tokenLastRefreshedAt,
-      lockedUntil: null,
-      cooldownUntil: null,
-      lastFailureAt: isHealthy ? existing.lastFailureAt : new Date(),
-      lastFailureCode: isHealthy ? null : health.code,
-      updatedAt: new Date(),
-    }).where(eq(baiduAccounts.id, existing.id)).run()
+    db.update(baiduAccounts)
+      .set({
+        label,
+        ownerUserId,
+        cookie: credentialSource === 'cookie' ? cookie : existing.cookie,
+        credentialSource,
+        refreshToken: credentialSource === 'open_platform' ? (health.refreshToken ?? refreshToken) : null,
+        accessToken: credentialSource === 'open_platform' ? (health.accessToken ?? null) : null,
+        tokenExpiresAt: credentialSource === 'open_platform' ? (health.tokenExpiresAt ?? null) : null,
+        openPlatformDriver: credentialSource === 'open_platform' ? openPlatformCredential?.driver : null,
+        openPlatformClientKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.clientKey : null,
+        openPlatformSecretKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.secretKey : null,
+        openPlatformServerUse: credentialSource === 'open_platform' ? openPlatformCredential?.serverUse : null,
+        weight,
+        baiduName: health.baiduName ?? existing.baiduName,
+        vipType: health.vipType ?? existing.vipType,
+        status: isHealthy ? 'active' : 'disabled',
+        reason: isHealthy ? '' : health.message.slice(0, 300),
+        disabledSource: isHealthy ? null : (health.disabledSource ?? 'health_transient_failure'),
+        healthStatus: health.status,
+        healthMessage: health.message.slice(0, 300),
+        healthCheckedAt: new Date(),
+        loginValid: health.loginValid ?? null,
+        bdstokenValid: health.bdstokenValid ?? null,
+        isSvip: health.isSvip ?? null,
+        quotaTotalBytes: health.quotaTotalBytes ?? null,
+        quotaUsedBytes: health.quotaUsedBytes ?? null,
+        quotaFreeBytes: health.quotaFreeBytes ?? null,
+        healthConsecutiveFailures: isHealthy || health.deterministic ? 0 : (existing.healthConsecutiveFailures ?? 0) + 1,
+        healthLastErrorCode: isHealthy ? null : health.code,
+        tokenStatus: credentialSource === 'open_platform' ? (isHealthy ? 'valid' : 'unknown') : existing.tokenStatus,
+        tokenCheckedAt: credentialSource === 'open_platform' ? new Date() : existing.tokenCheckedAt,
+        tokenMessage: credentialSource === 'open_platform' ? health.message.slice(0, 300) : existing.tokenMessage,
+        tokenLastErrorCode: credentialSource === 'open_platform' ? (isHealthy ? null : health.code) : existing.tokenLastErrorCode,
+        tokenLastRefreshedAt: credentialSource === 'open_platform' && isHealthy ? new Date() : existing.tokenLastRefreshedAt,
+        lockedUntil: null,
+        cooldownUntil: null,
+        lastFailureAt: isHealthy ? existing.lastFailureAt : new Date(),
+        lastFailureCode: isHealthy ? null : health.code,
+        updatedAt: new Date(),
+      })
+      .where(eq(baiduAccounts.id, existing.id))
+      .run()
     recordAccountStatusEvent({
       accountId: existing.id,
       oldStatus: existing.status,
@@ -369,43 +398,49 @@ export const addAccount = async (input: {
     return { account, created: false, updated: true, disabledByHealth: !isHealthy, health }
   }
 
-  db.insert(baiduAccounts).values({
-    label,
-    cookie: credentialSource === 'cookie' ? cookie : '',
-    ownerUserId,
-    credentialSource,
-    refreshToken: credentialSource === 'open_platform' ? (health.refreshToken ?? refreshToken) : null,
-    accessToken: credentialSource === 'open_platform' ? (health.accessToken ?? null) : null,
-    tokenExpiresAt: credentialSource === 'open_platform' ? (health.tokenExpiresAt ?? null) : null,
-    openPlatformDriver: credentialSource === 'open_platform' ? openPlatformCredential?.driver : null,
-    openPlatformClientKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.clientKey : null,
-    openPlatformSecretKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.secretKey : null,
-    openPlatformServerUse: credentialSource === 'open_platform' ? openPlatformCredential?.serverUse : null,
-    weight,
-    uk: health.uk,
-    baiduName: health.baiduName,
-    vipType: health.vipType ?? 'unknown',
-    status: 'active',
-    disabledSource: null,
-    healthStatus: 'healthy',
-    healthMessage: health.message,
-    healthCheckedAt: new Date(),
-    loginValid: health.loginValid ?? null,
-    bdstokenValid: health.bdstokenValid ?? null,
-    isSvip: health.isSvip ?? null,
-    quotaTotalBytes: health.quotaTotalBytes ?? null,
-    quotaUsedBytes: health.quotaUsedBytes ?? null,
-    quotaFreeBytes: health.quotaFreeBytes ?? null,
-    healthConsecutiveFailures: 0,
-    healthLastErrorCode: null,
-    tokenStatus: credentialSource === 'open_platform' ? 'valid' : 'unknown',
-    tokenCheckedAt: credentialSource === 'open_platform' ? new Date() : null,
-    tokenMessage: credentialSource === 'open_platform' ? health.message : null,
-    tokenLastErrorCode: null,
-    tokenLastRefreshedAt: credentialSource === 'open_platform' ? new Date() : null,
-    createdByUserId: input.actor.id,
-  }).run()
-  const account = db.select().from(baiduAccounts).where(eq(baiduAccounts.uk, health.uk ?? '')).get()
+  db.insert(baiduAccounts)
+    .values({
+      label,
+      cookie: credentialSource === 'cookie' ? cookie : '',
+      ownerUserId,
+      credentialSource,
+      refreshToken: credentialSource === 'open_platform' ? (health.refreshToken ?? refreshToken) : null,
+      accessToken: credentialSource === 'open_platform' ? (health.accessToken ?? null) : null,
+      tokenExpiresAt: credentialSource === 'open_platform' ? (health.tokenExpiresAt ?? null) : null,
+      openPlatformDriver: credentialSource === 'open_platform' ? openPlatformCredential?.driver : null,
+      openPlatformClientKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.clientKey : null,
+      openPlatformSecretKey: credentialSource === 'open_platform' && !openPlatformCredential?.serverUse ? openPlatformCredential?.secretKey : null,
+      openPlatformServerUse: credentialSource === 'open_platform' ? openPlatformCredential?.serverUse : null,
+      weight,
+      uk: health.uk,
+      baiduName: health.baiduName,
+      vipType: health.vipType ?? 'unknown',
+      status: 'active',
+      disabledSource: null,
+      healthStatus: 'healthy',
+      healthMessage: health.message,
+      healthCheckedAt: new Date(),
+      loginValid: health.loginValid ?? null,
+      bdstokenValid: health.bdstokenValid ?? null,
+      isSvip: health.isSvip ?? null,
+      quotaTotalBytes: health.quotaTotalBytes ?? null,
+      quotaUsedBytes: health.quotaUsedBytes ?? null,
+      quotaFreeBytes: health.quotaFreeBytes ?? null,
+      healthConsecutiveFailures: 0,
+      healthLastErrorCode: null,
+      tokenStatus: credentialSource === 'open_platform' ? 'valid' : 'unknown',
+      tokenCheckedAt: credentialSource === 'open_platform' ? new Date() : null,
+      tokenMessage: credentialSource === 'open_platform' ? health.message : null,
+      tokenLastErrorCode: null,
+      tokenLastRefreshedAt: credentialSource === 'open_platform' ? new Date() : null,
+      createdByUserId: input.actor.id,
+    })
+    .run()
+  const account = db
+    .select()
+    .from(baiduAccounts)
+    .where(eq(baiduAccounts.uk, health.uk ?? ''))
+    .get()
   if (account) {
     recordAccountHealthCheck(account.id, health)
     recordAccountStatusEvent({
@@ -432,12 +467,11 @@ export const probeAccountForAdd = async (input: {
   openPlatformServerUse?: boolean
 }) => {
   const credentialSource = input.credentialSource ?? 'cookie'
-  const openPlatformCredential = credentialSource === 'open_platform'
-    ? normalizeOpenPlatformCredential(input)
-    : null
-  const health = credentialSource === 'open_platform'
-    ? await probeBaiduOpenPlatform(String(input.refreshToken ?? ''), openPlatformCredential ?? undefined)
-    : await probeBaiduAccountCookie(normalizeBaiduCookie(String(input.cookie ?? '')))
+  const openPlatformCredential = credentialSource === 'open_platform' ? normalizeOpenPlatformCredential(input) : null
+  const health =
+    credentialSource === 'open_platform'
+      ? await probeBaiduOpenPlatform(String(input.refreshToken ?? ''), openPlatformCredential ?? undefined)
+      : await probeBaiduAccountCookie(normalizeBaiduCookie(String(input.cookie ?? '')))
   if (health.status !== 'healthy') throw badRequest(health.code, health.message, health)
   const existing = health.uk ? db.select().from(baiduAccounts).where(eq(baiduAccounts.uk, health.uk)).get() : undefined
   return {
@@ -508,14 +542,17 @@ export const validateCookie = async (cookie: string) => {
 
 export const setAccountStatus = (id: number, status: AccountStatus, reason = '', actor?: User) => {
   const before = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, id)).get()
-  db.update(baiduAccounts).set({
-    status,
-    reason,
-    disabledSource: status === 'disabled' ? 'admin' : null,
-    cooldownUntil: status === 'cooldown' ? new Date(Date.now() + getAccountPolicy().accountCooldownSeconds * 1000) : null,
-    lockedUntil: null,
-    updatedAt: new Date(),
-  }).where(eq(baiduAccounts.id, id)).run()
+  db.update(baiduAccounts)
+    .set({
+      status,
+      reason,
+      disabledSource: status === 'disabled' ? 'admin' : null,
+      cooldownUntil: status === 'cooldown' ? new Date(Date.now() + getAccountPolicy().accountCooldownSeconds * 1000) : null,
+      lockedUntil: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduAccounts.id, id))
+    .run()
   if (before) {
     recordAccountStatusEvent({
       accountId: id,
@@ -532,14 +569,17 @@ export const setAccountStatus = (id: number, status: AccountStatus, reason = '',
 
 export const setAccountOwnerStatus = (id: number, status: AccountStatus, reason = '', actor?: User) => {
   const before = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, id)).get()
-  db.update(baiduAccounts).set({
-    status,
-    reason,
-    disabledSource: status === 'disabled' ? 'owner' : null,
-    cooldownUntil: status === 'cooldown' ? new Date(Date.now() + getAccountPolicy().accountCooldownSeconds * 1000) : null,
-    lockedUntil: null,
-    updatedAt: new Date(),
-  }).where(eq(baiduAccounts.id, id)).run()
+  db.update(baiduAccounts)
+    .set({
+      status,
+      reason,
+      disabledSource: status === 'disabled' ? 'owner' : null,
+      cooldownUntil: status === 'cooldown' ? new Date(Date.now() + getAccountPolicy().accountCooldownSeconds * 1000) : null,
+      lockedUntil: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(baiduAccounts.id, id))
+    .run()
   if (before) {
     recordAccountStatusEvent({
       accountId: id,
@@ -554,18 +594,21 @@ export const setAccountOwnerStatus = (id: number, status: AccountStatus, reason 
   }
 }
 
-export const testAccountSign = async (account: BaiduAccount, shareid: number, uk: number) =>
-  client.getSign({ shareid, uk, cookie: account.cookie })
+export const testAccountSign = async (account: BaiduAccount, shareid: number, uk: number) => client.getSign({ shareid, uk, cookie: account.cookie })
 
 export const listOwnedAccounts = (owner: User) => {
-  const items = db.select().from(baiduAccounts)
+  const items = db
+    .select()
+    .from(baiduAccounts)
     .where(eq(baiduAccounts.ownerUserId, owner.id))
     .orderBy(sql`${baiduAccounts.id} DESC`)
     .all()
     .map((account) => {
-      const [usage] = db.select({
-        totalParses: sql<number>`COUNT(*)`,
-      }).from(parseRecords)
+      const [usage] = db
+        .select({
+          totalParses: sql<number>`COUNT(*)`,
+        })
+        .from(parseRecords)
         .where(eq(parseRecords.accountId, account.id))
         .all()
       return {
@@ -645,22 +688,18 @@ export const deleteOwnedAccount = (accountId: number, owner: User) => {
 
 export const getOwnedAccountDetail = (accountId: number, owner: User) => {
   const account = assertAccountOwner(accountId, owner)
-  const records = db.select().from(parseRecords)
-    .where(eq(parseRecords.accountId, accountId))
-    .orderBy(sql`${parseRecords.id} DESC`)
-    .limit(20)
-    .all()
-  const attempts = db.select().from(parseAttempts)
-    .where(eq(parseAttempts.accountId, accountId))
-    .orderBy(sql`${parseAttempts.id} DESC`)
-    .limit(20)
-    .all()
-  const healthChecks = db.select().from(accountHealthChecks)
+  const records = db.select().from(parseRecords).where(eq(parseRecords.accountId, accountId)).orderBy(sql`${parseRecords.id} DESC`).limit(20).all()
+  const attempts = db.select().from(parseAttempts).where(eq(parseAttempts.accountId, accountId)).orderBy(sql`${parseAttempts.id} DESC`).limit(20).all()
+  const healthChecks = db
+    .select()
+    .from(accountHealthChecks)
     .where(eq(accountHealthChecks.accountId, accountId))
     .orderBy(sql`${accountHealthChecks.id} DESC`)
     .limit(20)
     .all()
-  const tokenEvents = db.select().from(accountTokenEvents)
+  const tokenEvents = db
+    .select()
+    .from(accountTokenEvents)
     .where(eq(accountTokenEvents.accountId, accountId))
     .orderBy(sql`${accountTokenEvents.id} DESC`)
     .limit(20)

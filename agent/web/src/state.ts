@@ -91,8 +91,7 @@ const resultStatuses = new Set<ParseResult['status']>(['success', 'failed'])
 const workspaceModes = new Set<WorkspaceMode>(['share', 'disk'])
 const executionTabs = new Set<ExecutionTab>(['queue', 'results'])
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object'
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object'
 
 const numberFrom = (value: unknown) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -105,8 +104,7 @@ const numberFrom = (value: unknown) => {
 
 const numberOr = (value: unknown, fallback = 0) => numberFrom(value) ?? fallback
 
-const stringOr = (value: unknown, fallback = '') =>
-  typeof value === 'string' ? value : fallback
+const stringOr = (value: unknown, fallback = '') => (typeof value === 'string' ? value : fallback)
 
 const booleanOr = (value: unknown, fallback = false) => {
   if (typeof value === 'boolean') return value
@@ -164,8 +162,7 @@ const normalizeShareFile = (value: unknown): ShareFile | null => {
   }
 }
 
-const normalizeShareFiles = (value: unknown) =>
-  Array.isArray(value) ? value.map(normalizeShareFile).filter((item): item is ShareFile => item !== null) : []
+const normalizeShareFiles = (value: unknown) => (Array.isArray(value) ? value.map(normalizeShareFile).filter((item): item is ShareFile => item !== null) : [])
 
 const normalizeSelectedFile = (value: unknown): SelectedFile | null => {
   if (!isRecord(value)) return null
@@ -186,9 +183,7 @@ const normalizeSelectedFile = (value: unknown): SelectedFile | null => {
 
 const normalizeWorkspaceContext = (value: unknown): WorkspaceContext => {
   const record = isRecord(value) ? value : {}
-  const mode = typeof record.mode === 'string' && workspaceModes.has(record.mode as WorkspaceMode)
-    ? record.mode as WorkspaceMode
-    : 'share'
+  const mode = typeof record.mode === 'string' && workspaceModes.has(record.mode as WorkspaceMode) ? (record.mode as WorkspaceMode) : 'share'
   const dir = normalizeDir(record.dir)
   const paths = Array.isArray(record.paths)
     ? record.paths.map((item) => normalizeDir(item)).filter((item, index, list) => item === '/' || list.indexOf(item) === index)
@@ -204,11 +199,7 @@ const normalizeWorkspaceContext = (value: unknown): WorkspaceContext => {
   }
 }
 
-const normalizeDirectoryNode = (
-  value: unknown,
-  fallbackDir: string,
-  options?: { resetTransient?: boolean },
-): WorkspaceDirectoryNode | null => {
+const normalizeDirectoryNode = (value: unknown, fallbackDir: string, options?: { resetTransient?: boolean }): WorkspaceDirectoryNode | null => {
   if (!isRecord(value)) return null
   const dir = normalizeDir(value.dir, fallbackDir)
   const files = normalizeShareFiles(value.files)
@@ -253,14 +244,13 @@ const normalizeWorkspaceSnapshot = (value: unknown): WorkspaceSnapshot => {
   if (!isRecord(value)) return emptyWorkspaceSnapshot()
   const nodes = isRecord(value.nodes)
     ? Object.entries(value.nodes).reduce<Record<string, WorkspaceDirectoryNode>>((acc, [key, node]) => {
-      const normalized = normalizeDirectoryNode(node, key, { resetTransient: true })
-      if (normalized) acc[normalized.dir] = normalized
-      return acc
-    }, {})
+        const normalized = normalizeDirectoryNode(node, key, { resetTransient: true })
+        if (normalized) acc[normalized.dir] = normalized
+        return acc
+      }, {})
     : {}
-  const executionTab = typeof value.executionTab === 'string' && executionTabs.has(value.executionTab as ExecutionTab)
-    ? value.executionTab as ExecutionTab
-    : 'queue'
+  const executionTab =
+    typeof value.executionTab === 'string' && executionTabs.has(value.executionTab as ExecutionTab) ? (value.executionTab as ExecutionTab) : 'queue'
   return {
     context: normalizeWorkspaceContext(value.context),
     selectedFiles: Array.isArray(value.selectedFiles)
@@ -277,10 +267,10 @@ const normalizeWorkspaceSnapshot = (value: unknown): WorkspaceSnapshot => {
 const normalizeWorkspaceNodes = (value: unknown) =>
   isRecord(value)
     ? Object.entries(value).reduce<Record<string, WorkspaceDirectoryNode>>((acc, [key, node]) => {
-      const normalized = normalizeDirectoryNode(node, key)
-      if (normalized) acc[normalized.dir] = normalized
-      return acc
-    }, {})
+        const normalized = normalizeDirectoryNode(node, key)
+        if (normalized) acc[normalized.dir] = normalized
+        return acc
+      }, {})
     : {}
 
 const parseExecutionStorage = createJSONStorage<ParseExecutionSnapshot>(() => window.localStorage, {
@@ -295,14 +285,9 @@ const workspaceStorage = createJSONStorage<WorkspaceSnapshot>(() => window.sessi
 
 const shareCookieStorage = createJSONStorage<string>(() => window.localStorage)
 
-export const shareDirectoryCookieAtom = atomWithStorage<string>(
-  shareCookieStorageKey,
-  '',
-  shareCookieStorage,
-  {
-    getOnInit: true,
-  },
-)
+export const shareDirectoryCookieAtom = atomWithStorage<string>(shareCookieStorageKey, '', shareCookieStorage, {
+  getOnInit: true,
+})
 
 const parseExecutionSnapshotAtom = atomWithStorage<ParseExecutionSnapshot>(
   parseExecutionStorageKey,
@@ -332,8 +317,7 @@ const workspaceSnapshotAtom = atomWithStorage<WorkspaceSnapshot>(
   },
 )
 
-const selectedFilesToMap = (files: SelectedFile[]) =>
-  new Map<number, SelectedFile>(files.map((file) => [file.fsId, file]))
+const selectedFilesToMap = (files: SelectedFile[]) => new Map<number, SelectedFile>(files.map((file) => [file.fsId, file]))
 
 export const notificationsAtom = atom<AppNotification[]>([])
 export const pushNotificationAtom = atom(null, (_get, set, input: NotificationInput) => {

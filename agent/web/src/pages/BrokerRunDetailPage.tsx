@@ -74,9 +74,13 @@ export function BrokerRunDetailPage() {
       </div>
 
       {query.isPending ? (
-        <Panel><div className="text-sm text-slate-500">加载中...</div></Panel>
+        <Panel>
+          <div className="text-sm text-slate-500">加载中...</div>
+        </Panel>
       ) : !detail ? (
-        <Panel><EmptyState title="Broker run 不存在" /></Panel>
+        <Panel>
+          <EmptyState title="Broker run 不存在" />
+        </Panel>
       ) : (
         <>
           <Panel className="grid gap-4">
@@ -147,7 +151,9 @@ function BrokerEventTimeline({ events }: { events: BrokerRunDetail['events'] }) 
       {events.map((event) => (
         <div className="grid grid-cols-[16px_minmax(0,1fr)] gap-3" key={event.id}>
           <div className="relative flex justify-center">
-            <span className={`mt-1.5 size-2.5 rounded-full ${event.status === 'success' ? 'bg-emerald-500' : event.status === 'failed' ? 'bg-red-500' : event.status === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+            <span
+              className={`mt-1.5 size-2.5 rounded-full ${event.status === 'success' ? 'bg-emerald-500' : event.status === 'failed' ? 'bg-red-500' : event.status === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`}
+            />
           </div>
           <div className="rounded-lg border border-slate-200 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -160,7 +166,9 @@ function BrokerEventTimeline({ events }: { events: BrokerRunDetail['events'] }) 
             </div>
             <div className="mt-2 text-sm text-slate-700">{event.message}</div>
             {event.details ? (
-              <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-slate-950 px-3 py-2 text-xs leading-5 text-slate-100">{formatDetails(event.details)}</pre>
+              <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-slate-950 px-3 py-2 text-xs leading-5 text-slate-100">
+                {formatDetails(event.details)}
+              </pre>
             ) : null}
           </div>
         </div>
@@ -169,7 +177,7 @@ function BrokerEventTimeline({ events }: { events: BrokerRunDetail['events'] }) 
   )
 }
 
-function InfoCard({ label, value }: { label: string, value: string }) {
+function InfoCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
@@ -178,7 +186,7 @@ function InfoCard({ label, value }: { label: string, value: string }) {
   )
 }
 
-function InfoRow({ label, value }: { label: string, value: string }) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
       <span className="text-slate-500">{label}</span>

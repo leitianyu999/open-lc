@@ -7,7 +7,14 @@ import { HistoryDetailDrawer } from '../components/HistoryDetailDrawer'
 import { Button, EmptyState, Field, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
 import { formatBytes, formatDateTime } from '../lib/format'
 import { downloadableFromHistoryRecord } from '../lib/history'
-import { parseDownloaders, sendManyToDownloader, serializeDownloaders, summarizeSendResults, type DownloadableItem, type DownloaderConfig } from '../lib/downloaders'
+import {
+  parseDownloaders,
+  sendManyToDownloader,
+  serializeDownloaders,
+  summarizeSendResults,
+  type DownloadableItem,
+  type DownloaderConfig,
+} from '../lib/downloaders'
 import { errorAtom, pushNotificationAtom } from '../state'
 
 const copyText = async (value: string) => {
@@ -46,9 +53,7 @@ export function HistoryPage() {
   })
   const data = historyQuery.data?.data
   const downloaders = parseDownloaders(settingsQuery.data?.data.items.downloadersJson?.value)
-  const downloadableRecords = data?.records
-    .map(downloadableFromHistoryRecord)
-    .filter((item): item is DownloadableItem => item !== null) ?? []
+  const downloadableRecords = data?.records.map(downloadableFromHistoryRecord).filter((item): item is DownloadableItem => item !== null) ?? []
   const selectedDownloadItems = downloadableRecords.filter((item) => selectedDownloadIds.has(item.id))
   const pageAllSelected = downloadableRecords.length > 0 && downloadableRecords.every((item) => selectedDownloadIds.has(item.id))
 
@@ -117,9 +122,10 @@ export function HistoryPage() {
       const job = response.data
       pushNotification({
         variant: 'info',
-        message: job.status === 'success'
-          ? `重新解析成功 #${job.id}`
-          : `已提交重新解析任务 #${job.id}${job.status === 'queued' ? `，前面还有 ${job.ahead_count} 个任务` : ''}`,
+        message:
+          job.status === 'success'
+            ? `重新解析成功 #${job.id}`
+            : `已提交重新解析任务 #${job.id}${job.status === 'queued' ? `，前面还有 ${job.ahead_count} 个任务` : ''}`,
       })
       await detailQuery.refetch()
       await historyQuery.refetch()
@@ -130,96 +136,126 @@ export function HistoryPage() {
 
   return (
     <Panel className="grid gap-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold">解析历史</h2>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={downloadableRecords.length === 0} onClick={togglePageSelected} variant="secondary">
-              {pageAllSelected ? '取消本页' : '选择本页'}
-            </Button>
-            <DownloaderSendButton
-              downloaders={downloaders}
-              items={selectedDownloadItems}
-              onDefaultChange={(downloaderId) => void setDefaultDownloader(downloaderId)}
-              pending={sending}
-              size="md"
-              onSend={(downloader, items) => void sendItems(downloader, items)}
-            />
-            <Button disabled={historyQuery.isFetching} onClick={() => historyQuery.refetch()} variant="secondary">
-              <RefreshCw className={`size-4 ${historyQuery.isFetching ? 'animate-spin' : ''}`} />
-              刷新
-            </Button>
-          </div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">解析历史</h2>
         </div>
-
-        <div className="grid gap-3 md:grid-cols-[150px_170px_170px_minmax(0,1fr)]">
-          <Field label="状态">
-            <Select value={filters.status} onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}>
-              <option value="">全部</option>
-              <option value="success">成功</option>
-              <option value="failed">失败</option>
-            </Select>
-          </Field>
-          <Field label="凭证来源">
-            <Select value={filters.credentialSource} onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, credentialSource: event.target.value, page: 1 }))}>
-              <option value="">全部</option>
-              <option value="cookie">Cookie</option>
-              <option value="open_platform">开放平台</option>
-            </Select>
-          </Field>
-          <Field label="解析路线">
-            <Select value={filters.parseRoute} onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, parseRoute: event.target.value, page: 1 }))}>
-              <option value="">全部</option>
-              <option value="disk">disk</option>
-              <option value="sharedownload">sharedownload</option>
-              <option value="transfer">transfer</option>
-            </Select>
-          </Field>
-          <Field label="搜索">
-            <Input value={filters.q} onChange={(event: ChangeEvent<HTMLInputElement>) => setFilters((prev) => ({ ...prev, q: event.target.value, page: 1 }))} placeholder="文件名 / fs_id / 错误码" />
-          </Field>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={downloadableRecords.length === 0} onClick={togglePageSelected} variant="secondary">
+            {pageAllSelected ? '取消本页' : '选择本页'}
+          </Button>
+          <DownloaderSendButton
+            downloaders={downloaders}
+            items={selectedDownloadItems}
+            onDefaultChange={(downloaderId) => void setDefaultDownloader(downloaderId)}
+            pending={sending}
+            size="md"
+            onSend={(downloader, items) => void sendItems(downloader, items)}
+          />
+          <Button disabled={historyQuery.isFetching} onClick={() => historyQuery.refetch()} variant="secondary">
+            <RefreshCw className={`size-4 ${historyQuery.isFetching ? 'animate-spin' : ''}`} />
+            刷新
+          </Button>
         </div>
+      </div>
 
-        {!data || data.records.length === 0 ? (
-          <EmptyState title="暂无历史" />
-        ) : (
-          <div className="grid gap-3">
-            <Table>
-              <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
-                <tr><th className="w-10 p-3"></th><th className="p-3">文件</th><th className="p-3">状态</th><th className="p-3">路线</th><th className="p-3">结果</th><th className="p-3">时间</th><th className="p-3">操作</th></tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.records.map((record) => {
-                  const downloadable = downloadableFromHistoryRecord(record)
-                  const selected = downloadable ? selectedDownloadIds.has(downloadable.id) : false
-                  return (
-                    <tr key={record.id}>
-                      <td className="p-3 align-top">
-                        {downloadable ? (
-                          <button aria-label="选择下载任务" className="flex size-5 items-center justify-center rounded text-slate-500 hover:bg-slate-100" onClick={() => toggleRecordSelected(record)} type="button">
-                            {selected ? <CheckSquare className="size-5 text-blue-600" /> : <Square className="size-5" />}
-                          </button>
-                        ) : null}
-                      </td>
-                      <td className="p-3">
-                        <MiddleEllipsis text={record.filename} className="max-w-[320px] font-semibold" />
-                        <div className="text-xs text-slate-500">{formatBytes(record.sizeBytes)} · fs_id {record.fsId}</div>
-                        {record.errorMessage ? <div className="mt-1 max-w-[320px] truncate text-xs text-red-600">{record.errorMessage}</div> : null}
-                      </td>
-                      <td className="p-3"><StatusBadge status={record.status} /></td>
-                      <td className="p-3 text-sm text-slate-600">{record.routeLabel}</td>
-                      <td className="p-3 text-xs text-slate-500">{record.resultUrl ? (record.linkExpired ? '可能已过期' : '可用结果') : '-'}</td>
-                      <td className="p-3 text-slate-500">{formatDateTime(record.createdAt)}</td>
-                      <td className="p-3">
-                        <div className="flex flex-wrap gap-2">
-                          {record.resultUrl ? (
-                            <>
-                              <Button onClick={() => copyText(record.resultUrl ?? '')} size="sm" variant="secondary">
-                                <Copy className="size-4" />
-                                复制链接
-                              </Button>
-                              {downloadable ? (
+      <div className="grid gap-3 md:grid-cols-[150px_170px_170px_minmax(0,1fr)]">
+        <Field label="状态">
+          <Select
+            value={filters.status}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
+          >
+            <option value="">全部</option>
+            <option value="success">成功</option>
+            <option value="failed">失败</option>
+          </Select>
+        </Field>
+        <Field label="凭证来源">
+          <Select
+            value={filters.credentialSource}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, credentialSource: event.target.value, page: 1 }))}
+          >
+            <option value="">全部</option>
+            <option value="cookie">Cookie</option>
+            <option value="open_platform">开放平台</option>
+          </Select>
+        </Field>
+        <Field label="解析路线">
+          <Select
+            value={filters.parseRoute}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, parseRoute: event.target.value, page: 1 }))}
+          >
+            <option value="">全部</option>
+            <option value="disk">disk</option>
+            <option value="sharedownload">sharedownload</option>
+            <option value="transfer">transfer</option>
+          </Select>
+        </Field>
+        <Field label="搜索">
+          <Input
+            value={filters.q}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setFilters((prev) => ({ ...prev, q: event.target.value, page: 1 }))}
+            placeholder="文件名 / fs_id / 错误码"
+          />
+        </Field>
+      </div>
+
+      {!data || data.records.length === 0 ? (
+        <EmptyState title="暂无历史" />
+      ) : (
+        <div className="grid gap-3">
+          <Table>
+            <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+              <tr>
+                <th className="w-10 p-3"></th>
+                <th className="p-3">文件</th>
+                <th className="p-3">状态</th>
+                <th className="p-3">路线</th>
+                <th className="p-3">结果</th>
+                <th className="p-3">时间</th>
+                <th className="p-3">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.records.map((record) => {
+                const downloadable = downloadableFromHistoryRecord(record)
+                const selected = downloadable ? selectedDownloadIds.has(downloadable.id) : false
+                return (
+                  <tr key={record.id}>
+                    <td className="p-3 align-top">
+                      {downloadable ? (
+                        <button
+                          aria-label="选择下载任务"
+                          className="flex size-5 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
+                          onClick={() => toggleRecordSelected(record)}
+                          type="button"
+                        >
+                          {selected ? <CheckSquare className="size-5 text-blue-600" /> : <Square className="size-5" />}
+                        </button>
+                      ) : null}
+                    </td>
+                    <td className="p-3">
+                      <MiddleEllipsis text={record.filename} className="max-w-[320px] font-semibold" />
+                      <div className="text-xs text-slate-500">
+                        {formatBytes(record.sizeBytes)} · fs_id {record.fsId}
+                      </div>
+                      {record.errorMessage ? <div className="mt-1 max-w-[320px] truncate text-xs text-red-600">{record.errorMessage}</div> : null}
+                    </td>
+                    <td className="p-3">
+                      <StatusBadge status={record.status} />
+                    </td>
+                    <td className="p-3 text-sm text-slate-600">{record.routeLabel}</td>
+                    <td className="p-3 text-xs text-slate-500">{record.resultUrl ? (record.linkExpired ? '可能已过期' : '可用结果') : '-'}</td>
+                    <td className="p-3 text-slate-500">{formatDateTime(record.createdAt)}</td>
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-2">
+                        {record.resultUrl ? (
+                          <>
+                            <Button onClick={() => copyText(record.resultUrl ?? '')} size="sm" variant="secondary">
+                              <Copy className="size-4" />
+                              复制链接
+                            </Button>
+                            {downloadable ? (
                               <DownloaderSendButton
                                 downloaders={downloaders}
                                 items={[downloadable]}
@@ -227,50 +263,61 @@ export function HistoryPage() {
                                 pending={sending}
                                 onSend={(downloader, items) => void sendItems(downloader, items)}
                               />
-                              ) : null}
-                            </>
-                          ) : null}
-                          {record.resultUa ? (
-                            <Button onClick={() => copyText(record.resultUa ?? '')} size="sm" variant="secondary">
-                              <Clipboard className="size-4" />
-                              复制 UA
-                            </Button>
-                          ) : null}
-                          <Button onClick={() => setSelectedRecordId(record.id)} size="sm" variant="secondary">
-                            <Eye className="size-4" />
-                            详情
+                            ) : null}
+                          </>
+                        ) : null}
+                        {record.resultUa ? (
+                          <Button onClick={() => copyText(record.resultUa ?? '')} size="sm" variant="secondary">
+                            <Clipboard className="size-4" />
+                            复制 UA
                           </Button>
-                          <Button disabled={reparseMutation.isPending} onClick={() => reparse(record)} size="sm" variant="ghost">
-                            <RotateCcw className="size-4" />
-                            重新解析
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </Table>
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
-              <span>第 {data.page} / {data.totalPages} 页，共 {data.total} 条</span>
-              <div className="flex gap-2">
-                <Button disabled={filters.page <= 1} onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))} size="sm" variant="secondary">上一页</Button>
-                <Button disabled={filters.page >= data.totalPages} onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))} size="sm" variant="secondary">下一页</Button>
-              </div>
+                        ) : null}
+                        <Button onClick={() => setSelectedRecordId(record.id)} size="sm" variant="secondary">
+                          <Eye className="size-4" />
+                          详情
+                        </Button>
+                        <Button disabled={reparseMutation.isPending} onClick={() => reparse(record)} size="sm" variant="ghost">
+                          <RotateCcw className="size-4" />
+                          重新解析
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </Table>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+            <span>
+              第 {data.page} / {data.totalPages} 页，共 {data.total} 条
+            </span>
+            <div className="flex gap-2">
+              <Button disabled={filters.page <= 1} onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))} size="sm" variant="secondary">
+                上一页
+              </Button>
+              <Button
+                disabled={filters.page >= data.totalPages}
+                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
+                size="sm"
+                variant="secondary"
+              >
+                下一页
+              </Button>
             </div>
           </div>
-        )}
-        <HistoryDetailDrawer
-          detail={detailQuery.data?.data}
-          loading={detailQuery.isFetching}
-          open={selectedRecordId !== null}
-          onClose={() => setSelectedRecordId(null)}
-          onReparse={reparse}
-          downloaders={downloaders}
-          reparsePending={reparseMutation.isPending}
-          sending={sending}
-          onSend={(downloader, items) => void sendItems(downloader, items)}
-        />
+        </div>
+      )}
+      <HistoryDetailDrawer
+        detail={detailQuery.data?.data}
+        loading={detailQuery.isFetching}
+        open={selectedRecordId !== null}
+        onClose={() => setSelectedRecordId(null)}
+        onReparse={reparse}
+        downloaders={downloaders}
+        reparsePending={reparseMutation.isPending}
+        sending={sending}
+        onSend={(downloader, items) => void sendItems(downloader, items)}
+      />
     </Panel>
   )
 }

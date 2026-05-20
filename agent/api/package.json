@@ -23,7 +23,7 @@
   },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile ../../.cache/tsc/agent-api.tsbuildinfo"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.5",

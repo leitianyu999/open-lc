@@ -9,11 +9,7 @@ export function NotificationCenter() {
   return (
     <div className="grid gap-2">
       {notifications.map((notification) => (
-        <InlineAlert
-          key={notification.id}
-          variant={notification.variant}
-          onClose={() => dismissNotification(notification.id)}
-        >
+        <InlineAlert key={notification.id} variant={notification.variant} onClose={() => dismissNotification(notification.id)}>
           {notification.message}
         </InlineAlert>
       ))}

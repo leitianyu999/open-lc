@@ -1,9 +1,4 @@
-import {
-  createHashHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from '@tanstack/react-router'
+import { createHashHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { AppShell } from './components/AppShell'
 import { HomePage } from './pages/HomePage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -52,14 +47,7 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 })
 
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  localHistoryRoute,
-  localAccountsRoute,
-  brokerRoute,
-  brokerRunDetailRoute,
-  settingsRoute,
-])
+const routeTree = rootRoute.addChildren([indexRoute, localHistoryRoute, localAccountsRoute, brokerRoute, brokerRunDetailRoute, settingsRoute])
 
 export const router = createRouter({
   routeTree,

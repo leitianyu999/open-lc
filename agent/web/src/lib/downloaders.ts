@@ -39,17 +39,13 @@ export const defaultDownloaderForType = (type: DownloaderType): DownloaderConfig
   isDefault: false,
 })
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
-const stringOr = (value: unknown, fallback = '') =>
-  typeof value === 'string' ? value : fallback
+const stringOr = (value: unknown, fallback = '') => (typeof value === 'string' ? value : fallback)
 
-const boolOr = (value: unknown, fallback = false) =>
-  typeof value === 'boolean' ? value : fallback
+const boolOr = (value: unknown, fallback = false) => (typeof value === 'boolean' ? value : fallback)
 
-const normalizeDownloaderType = (value: unknown): DownloaderType =>
-  value === 'aria2' ? 'aria2' : 'motrix'
+const normalizeDownloaderType = (value: unknown): DownloaderType => (value === 'aria2' ? 'aria2' : 'motrix')
 
 const normalizeDownloader = (value: unknown, index: number): DownloaderConfig | null => {
   if (!isRecord(value)) return null
@@ -74,9 +70,7 @@ export const parseDownloaders = (value: string | undefined): DownloaderConfig[] 
   try {
     const parsed = JSON.parse(value) as unknown
     if (!Array.isArray(parsed)) return []
-    const normalized = parsed
-      .map(normalizeDownloader)
-      .filter((item): item is DownloaderConfig => item !== null)
+    const normalized = parsed.map(normalizeDownloader).filter((item): item is DownloaderConfig => item !== null)
     if (!normalized.some((item) => item.isDefault) && normalized[0]) {
       return normalized.map((item, index) => ({ ...item, isDefault: index === 0 }))
     }
@@ -93,19 +87,20 @@ export const parseDownloaders = (value: string | undefined): DownloaderConfig[] 
 }
 
 export const serializeDownloaders = (downloaders: DownloaderConfig[]) =>
-  JSON.stringify(downloaders.map((item) => ({
-    id: item.id,
-    name: item.name.trim(),
-    type: item.type,
-    rpcUrl: item.rpcUrl.trim(),
-    token: item.token.trim(),
-    downloadDir: item.downloadDir.trim(),
-    enabled: item.enabled,
-    isDefault: item.isDefault,
-  })))
+  JSON.stringify(
+    downloaders.map((item) => ({
+      id: item.id,
+      name: item.name.trim(),
+      type: item.type,
+      rpcUrl: item.rpcUrl.trim(),
+      token: item.token.trim(),
+      downloadDir: item.downloadDir.trim(),
+      enabled: item.enabled,
+      isDefault: item.isDefault,
+    })),
+  )
 
-export const enabledDownloaders = (downloaders: DownloaderConfig[]) =>
-  downloaders.filter((item) => item.enabled && item.rpcUrl.trim())
+export const enabledDownloaders = (downloaders: DownloaderConfig[]) => downloaders.filter((item) => item.enabled && item.rpcUrl.trim())
 
 export const defaultDownloader = (downloaders: DownloaderConfig[]) => {
   const enabled = enabledDownloaders(downloaders)
@@ -143,7 +138,7 @@ export const sendToDownloader = async (downloader: DownloaderConfig, item: Downl
       params,
     }),
   })
-  const body = await response.json().catch(() => null) as unknown
+  const body = (await response.json().catch(() => null)) as unknown
   if (!response.ok) throw new Error(`下载器请求失败 ${response.status}`)
   if (isRecord(body) && body.error) throw new Error(aria2ErrorMessage(body.error))
   if (isRecord(body) && typeof body.result === 'string') return body.result

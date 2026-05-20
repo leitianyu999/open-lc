@@ -1,20 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAtom, useSetAtom } from 'jotai'
-import {
-  CheckSquare,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  File,
-  Folder,
-  Loader2,
-  RefreshCw,
-  Square,
-  HardDrive,
-  Link2,
-  ListChecks,
-  X,
-} from 'lucide-react'
+import { CheckSquare, ChevronDown, ChevronRight, Download, File, Folder, Loader2, RefreshCw, Square, HardDrive, Link2, ListChecks, X } from 'lucide-react'
 import { api, honoClient, messageFromError, type LocalAccount, type ParseJob, type ShareFile } from '../api'
 import {
   diskFilesAtom,
@@ -59,13 +45,7 @@ type PendingShareDirectoryLoad = {
   options?: LoadDirectoryOptions
 }
 
-function ModeSegmentedControl({
-  value,
-  onChange,
-}: {
-  value: 'share' | 'disk'
-  onChange: (value: 'share' | 'disk') => void
-}) {
+function ModeSegmentedControl({ value, onChange }: { value: 'share' | 'disk'; onChange: (value: 'share' | 'disk') => void }) {
   const items = [
     { value: 'share' as const, label: '分享浏览', icon: Link2 },
     { value: 'disk' as const, label: '网盘浏览', icon: HardDrive },
@@ -120,27 +100,18 @@ const selectedFromFile = (file: ShareFile, dir: string, accountId?: number): Sel
 
 const hasSelectedFsId = (selected: Map<number, SelectedFile>, fsId: number) => selected.has(fsId)
 
-const directoryPathFor = (file: ShareFile, parentDir: string) =>
-  file.path || joinPath(parentDir, file.server_filename)
+const directoryPathFor = (file: ShareFile, parentDir: string) => file.path || joinPath(parentDir, file.server_filename)
 
 const treeIndentPx = (depth: number) => depth * 22
 
-const directoryFiles = (node?: DirectoryNode) =>
-  (node?.files ?? []).filter((item) => !item.is_dir)
+const directoryFiles = (node?: DirectoryNode) => (node?.files ?? []).filter((item) => !item.is_dir)
 
 const resolveMergedDirectory = (file: ShareFile, parentDir: string, nodes: Record<string, DirectoryNode>): MergedDirectoryView => {
   let label = file.server_filename
   let dir = directoryPathFor(file, parentDir)
   let node = nodes[dir]
 
-  while (
-    node?.loaded &&
-    !node.loading &&
-    !node.error &&
-    !node.hasMore &&
-    node.files.length === 1 &&
-    node.files[0]?.is_dir
-  ) {
+  while (node?.loaded && !node.loading && !node.error && !node.hasMore && node.files.length === 1 && node.files[0]?.is_dir) {
     const onlyDir = node.files[0]
     label = `${label}/${onlyDir.server_filename}`
     dir = directoryPathFor(onlyDir, dir)
@@ -159,9 +130,8 @@ const collapseBreadcrumbs = (dir: string, nodes: Record<string, DirectoryNode>) 
     const current = parts[index]
     const parent = parts[index - 1]
     const parentNode = nodes[parent.path]
-    const singleChild = parentNode?.loaded && parentNode.files.length === 1 && parentNode.files[0]?.is_dir
-      ? directoryPathFor(parentNode.files[0], parent.path)
-      : null
+    const singleChild =
+      parentNode?.loaded && parentNode.files.length === 1 && parentNode.files[0]?.is_dir ? directoryPathFor(parentNode.files[0], parent.path) : null
     const previous = merged[merged.length - 1]
 
     if (previous.path !== '/' && singleChild === current.path) {
@@ -224,8 +194,7 @@ export function ParserWorkspace() {
     setQueueAndRef((prev) => prev.filter((item) => item.fsId !== fsId || item.status !== 'waiting'))
   }
 
-  const isStillWaiting = (fsId: number) =>
-    queueRef.current.some((item) => item.fsId === fsId && item.status === 'waiting')
+  const isStillWaiting = (fsId: number) => queueRef.current.some((item) => item.fsId === fsId && item.status === 'waiting')
 
   const setDefaultDownloader = async (downloaderId: string) => {
     const next = downloaders.map((item) => ({ ...item, isDefault: item.id === downloaderId }))
@@ -517,13 +486,7 @@ export function ParserWorkspace() {
   }
 
   const statusFromJob = (job: ParseJob): QueuedFile['status'] =>
-    job.status === 'running'
-      ? 'running'
-      : job.status === 'success'
-        ? 'success'
-        : job.status === 'failed'
-          ? 'failed'
-          : 'queued'
+    job.status === 'running' ? 'running' : job.status === 'success' ? 'success' : job.status === 'failed' ? 'failed' : 'queued'
 
   const messageFromJob = (job: ParseJob) => {
     if (job.status === 'queued') return `排队中，前面还有 ${job.ahead_count} 个任务`
@@ -549,7 +512,7 @@ export function ParserWorkspace() {
 
   const appendResult = async (item: Pick<QueuedFile, 'fsId' | 'filename'>, current: ParseJob, prepend = false) => {
     const addResult = (result: ParseResult) => {
-      setResults((prev) => prepend ? [result, ...prev] : [...prev, result])
+      setResults((prev) => (prepend ? [result, ...prev] : [...prev, result]))
     }
 
     if (current.status === 'success' && current.result) {
@@ -579,22 +542,34 @@ export function ParserWorkspace() {
   }
 
   const runSubmittedJob = async (item: Pick<QueuedFile, 'fsId' | 'filename'>, job: ParseJob, prependResult = false) => {
-    setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
-      ...row,
-      status: statusFromJob(job),
-      jobId: job.id,
-      aheadCount: job.ahead_count,
-      message: messageFromJob(job),
-    } : row))
+    setQueueAndRef((prev) =>
+      prev.map((row) =>
+        row.fsId === item.fsId
+          ? {
+              ...row,
+              status: statusFromJob(job),
+              jobId: job.id,
+              aheadCount: job.ahead_count,
+              message: messageFromJob(job),
+            }
+          : row,
+      ),
+    )
 
     const current = await pollJob(job, (next) => {
-      setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
-        ...row,
-        status: statusFromJob(next),
-        jobId: next.id,
-        aheadCount: next.ahead_count,
-        message: messageFromJob(next),
-      } : row))
+      setQueueAndRef((prev) =>
+        prev.map((row) =>
+          row.fsId === item.fsId
+            ? {
+                ...row,
+                status: statusFromJob(next),
+                jobId: next.id,
+                aheadCount: next.ahead_count,
+                message: messageFromJob(next),
+              }
+            : row,
+        ),
+      )
     })
 
     await appendResult(item, current, prependResult)
@@ -613,7 +588,7 @@ export function ParserWorkspace() {
 
     for (const item of pending) {
       if (!isStillWaiting(item.fsId)) continue
-      setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? { ...row, status: 'queued', message: '提交任务中' } : row))
+      setQueueAndRef((prev) => prev.map((row) => (row.fsId === item.fsId ? { ...row, status: 'queued', message: '提交任务中' } : row)))
       try {
         if (context.mode === 'disk') {
           const response = await diskResolveMutation.mutateAsync({
@@ -626,18 +601,27 @@ export function ParserWorkspace() {
             },
           })
           const data = response.data
-          setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
-            ...row,
-            status: 'success',
-            message: '网盘取链成功',
-          } : row))
-          setResults((prev) => [...prev, {
-            fsId: item.fsId,
-            filename: item.filename,
-            status: 'success',
-            message: '网盘取链成功',
-            data,
-          }])
+          setQueueAndRef((prev) =>
+            prev.map((row) =>
+              row.fsId === item.fsId
+                ? {
+                    ...row,
+                    status: 'success',
+                    message: '网盘取链成功',
+                  }
+                : row,
+            ),
+          )
+          setResults((prev) => [
+            ...prev,
+            {
+              fsId: item.fsId,
+              filename: item.filename,
+              status: 'success',
+              message: '网盘取链成功',
+              data,
+            },
+          ])
           await api.api.local.history.$get.invalidate()
           continue
         }
@@ -653,17 +637,26 @@ export function ParserWorkspace() {
         await runSubmittedJob(item, submitted.data)
       } catch (error) {
         const message = messageFromError(error, '解析失败')
-        setQueueAndRef((prev) => prev.map((row) => row.fsId === item.fsId ? {
-          ...row,
-          status: 'failed',
-          message,
-        } : row))
-        setResults((prev) => [...prev, {
-          fsId: item.fsId,
-          filename: item.filename,
-          status: 'failed',
-          message,
-        }])
+        setQueueAndRef((prev) =>
+          prev.map((row) =>
+            row.fsId === item.fsId
+              ? {
+                  ...row,
+                  status: 'failed',
+                  message,
+                }
+              : row,
+          ),
+        )
+        setResults((prev) => [
+          ...prev,
+          {
+            fsId: item.fsId,
+            filename: item.filename,
+            status: 'failed',
+            message,
+          },
+        ])
       }
     }
   }
@@ -686,7 +679,9 @@ export function ParserWorkspace() {
             <div>
               <h2 className="text-xl font-bold">工作台</h2>
             </div>
-            <div className={`grid gap-3 ${context.mode === 'share' ? 'md:grid-cols-[220px_minmax(0,1fr)_120px]' : 'md:grid-cols-[220px_220px_minmax(240px,1fr)]'}`}>
+            <div
+              className={`grid gap-3 ${context.mode === 'share' ? 'md:grid-cols-[220px_minmax(0,1fr)_120px]' : 'md:grid-cols-[220px_220px_minmax(240px,1fr)]'}`}
+            >
               <Field label="浏览模式">
                 <ModeSegmentedControl value={context.mode} onChange={setWorkspaceMode} />
               </Field>
@@ -705,31 +700,59 @@ export function ParserWorkspace() {
                     />
                   </Field>
                   <Field label="提取码">
-                    <Input className="w-full" maxLength={4} value={context.pwd} onChange={(event: ChangeEvent<HTMLInputElement>) => setContext((prev) => ({ ...prev, pwd: event.target.value }))} placeholder="可留空" />
+                    <Input
+                      className="w-full"
+                      maxLength={4}
+                      value={context.pwd}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => setContext((prev) => ({ ...prev, pwd: event.target.value }))}
+                      placeholder="可留空"
+                    />
                   </Field>
                 </>
               ) : (
                 <>
                   <Field label="账号">
-                    <Select className="w-full" value={String(context.accountId)} onChange={(event: ChangeEvent<HTMLSelectElement>) => setContext((prev) => ({ ...prev, accountId: Number(event.target.value), dir: '/', paths: ['/'] }))}>
+                    <Select
+                      className="w-full"
+                      value={String(context.accountId)}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                        setContext((prev) => ({ ...prev, accountId: Number(event.target.value), dir: '/', paths: ['/'] }))
+                      }
+                    >
                       <option value="0">选择账号</option>
                       {activeLocalAccounts.map((account) => (
-                        <option key={account.id} value={account.id}>{account.baiduName || account.label}</option>
+                        <option key={account.id} value={account.id}>
+                          {account.baiduName || account.label}
+                        </option>
                       ))}
                     </Select>
                   </Field>
                   <Field label="当前目录">
-                    <Input className="w-full" value={context.dir} onChange={(event: ChangeEvent<HTMLInputElement>) => setContext((prev) => ({ ...prev, dir: event.target.value }))} />
+                    <Input
+                      className="w-full"
+                      value={context.dir}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => setContext((prev) => ({ ...prev, dir: event.target.value }))}
+                    />
                   </Field>
                 </>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button disabled={shareFilesMutation.isPending || Boolean(currentNode?.loading)} onClick={refreshRoot}>
-                {shareFilesMutation.isPending || currentNode?.loading ? <Loader2 className="size-4 animate-spin" /> : context.mode === 'disk' ? <HardDrive className="size-4" /> : <Link2 className="size-4" />}
+                {shareFilesMutation.isPending || currentNode?.loading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : context.mode === 'disk' ? (
+                  <HardDrive className="size-4" />
+                ) : (
+                  <Link2 className="size-4" />
+                )}
                 {context.mode === 'disk' ? '读取网盘目录' : '获取分享文件'}
               </Button>
-              <Button disabled={selectedList.length === 0 || submitJobMutation.isPending || diskResolveMutation.isPending} onClick={parseSelected} variant="secondary">
+              <Button
+                disabled={selectedList.length === 0 || submitJobMutation.isPending || diskResolveMutation.isPending}
+                onClick={parseSelected}
+                variant="secondary"
+              >
                 <Download className="size-4" />
                 解析 {selectedList.length ? `${selectedList.length} 个` : ''}
               </Button>
@@ -743,9 +766,7 @@ export function ParserWorkspace() {
                 <ListChecks className="size-4" />
                 执行面板
                 {executionCount > 0 ? (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                    {executionCount}
-                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{executionCount}</span>
                 ) : null}
               </Button>
               {selectedList.length > 0 ? (
@@ -820,7 +841,9 @@ export function ParserWorkspace() {
             />
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button onClick={closeCookieModal} variant="secondary">取消</Button>
+            <Button onClick={closeCookieModal} variant="secondary">
+              取消
+            </Button>
             <Button disabled={shareFilesMutation.isPending} onClick={() => void saveCookieAndContinue()}>
               {shareFilesMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
               保存并继续
@@ -832,15 +855,7 @@ export function ParserWorkspace() {
   )
 }
 
-function BrowserHeader({
-  dir,
-  nodes,
-  onNavigate,
-}: {
-  dir: string
-  nodes: Record<string, DirectoryNode>
-  onNavigate: (dir: string) => Promise<void>
-}) {
+function BrowserHeader({ dir, nodes, onNavigate }: { dir: string; nodes: Record<string, DirectoryNode>; onNavigate: (dir: string) => Promise<void> }) {
   const crumbs = collapseBreadcrumbs(dir, nodes)
   return (
     <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 px-3 py-2 text-sm">
@@ -943,7 +958,7 @@ function DirectoryRows({
     <>
       {node.files.map((file) => {
         const merged = file.is_dir ? resolveMergedDirectory(file, dir, nodes) : null
-        const childDir = merged?.dir ?? (file.is_dir ? (file.path || joinPath(dir, file.server_filename)) : '')
+        const childDir = merged?.dir ?? (file.is_dir ? file.path || joinPath(dir, file.server_filename) : '')
         const child = childDir ? nodes[childDir] : undefined
         return (
           <div key={`${dir}:${file.fs_id}`}>
@@ -970,7 +985,9 @@ function DirectoryRows({
               ) : child.error ? (
                 <IndentedRow depth={depth + 1}>
                   <span className="text-red-600">{child.error}</span>
-                  <Button className="min-h-8 px-2 py-1 text-xs" onClick={() => onRetryDirectory(childDir)} variant="secondary">重试</Button>
+                  <Button className="min-h-8 px-2 py-1 text-xs" onClick={() => onRetryDirectory(childDir)} variant="secondary">
+                    重试
+                  </Button>
                 </IndentedRow>
               ) : child.files.length > 0 ? (
                 <DirectoryRows
@@ -1038,7 +1055,9 @@ function FileRow({
   const childFiles = directoryFiles(childNode)
   const allSelected = childFiles.length > 0 && childFiles.every((item) => hasSelectedFsId(selectedMap, item.fs_id))
   return (
-    <div className={`grid min-h-14 grid-cols-[minmax(0,1fr)_120px_140px] items-center px-3 py-2 text-sm max-md:grid-cols-[minmax(0,1fr)_92px] ${file.is_dir ? 'bg-slate-50/40 hover:bg-slate-50' : 'hover:bg-slate-50/70'}`}>
+    <div
+      className={`grid min-h-14 grid-cols-[minmax(0,1fr)_120px_140px] items-center px-3 py-2 text-sm max-md:grid-cols-[minmax(0,1fr)_92px] ${file.is_dir ? 'bg-slate-50/40 hover:bg-slate-50' : 'hover:bg-slate-50/70'}`}
+    >
       <div className="min-w-0" style={{ paddingLeft: `${treeIndentPx(depth)}px` }}>
         <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)] items-center gap-2 rounded-md px-1 py-0.5">
           {file.is_dir ? (
@@ -1106,12 +1125,23 @@ function FileRow({
               </button>
             </HoverTooltip>
           ) : (
-            <button aria-label={selected ? '取消选择' : '选择文件'} className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100" type="button" onClick={() => onToggleFile(file, dir, !selected)}>
+            <button
+              aria-label={selected ? '取消选择' : '选择文件'}
+              className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
+              type="button"
+              onClick={() => onToggleFile(file, dir, !selected)}
+            >
               {selected ? <CheckSquare className="size-5 text-blue-600" /> : <Square className="size-5" />}
             </button>
           )}
-          <button className={`flex min-w-0 items-center gap-3 text-left ${file.is_dir ? 'font-semibold text-slate-900' : 'text-slate-800'}`} type="button" onClick={() => file.is_dir ? onEnter({ ...file, path: childDir, server_filename: displayLabel }, dir) : onToggleFile(file, dir, !selected)}>
-            <span className={`relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${file.is_dir ? 'bg-slate-200/80 text-slate-700' : 'bg-slate-100 text-slate-400'}`}>
+          <button
+            className={`flex min-w-0 items-center gap-3 text-left ${file.is_dir ? 'font-semibold text-slate-900' : 'text-slate-800'}`}
+            type="button"
+            onClick={() => (file.is_dir ? onEnter({ ...file, path: childDir, server_filename: displayLabel }, dir) : onToggleFile(file, dir, !selected))}
+          >
+            <span
+              className={`relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${file.is_dir ? 'bg-slate-200/80 text-slate-700' : 'bg-slate-100 text-slate-400'}`}
+            >
               {depth > 0 ? <span className="absolute -left-2 top-1/2 h-px w-2 bg-slate-300" /> : null}
               {file.is_dir ? <Folder className="size-4.5" /> : <File className="size-4.5" />}
             </span>
@@ -1119,17 +1149,18 @@ function FileRow({
           </button>
         </div>
       </div>
-      <div className="text-slate-500">
-        {file.is_dir ? '-' : formatBytes(file.size)}
-      </div>
+      <div className="text-slate-500">{file.is_dir ? '-' : formatBytes(file.size)}</div>
       <div className="text-slate-500 max-md:hidden">{formatDateTime(file.server_mtime ? file.server_mtime * 1000 : null)}</div>
     </div>
   )
 }
 
-function IndentedRow({ depth, children }: { depth: number, children: ReactNode }) {
+function IndentedRow({ depth, children }: { depth: number; children: ReactNode }) {
   return (
-    <div className="flex min-h-11 flex-wrap items-center gap-2 bg-slate-50/60 px-3 py-2 text-sm text-slate-500" style={{ paddingLeft: `${treeIndentPx(depth) + 48}px` }}>
+    <div
+      className="flex min-h-11 flex-wrap items-center gap-2 bg-slate-50/60 px-3 py-2 text-sm text-slate-500"
+      style={{ paddingLeft: `${treeIndentPx(depth) + 48}px` }}
+    >
       {children}
     </div>
   )

@@ -44,5 +44,4 @@ export const normalizeBaiduCookie = (value: string) => {
     .join('; ')
 }
 
-export const hasRequiredBaiduCookieFields = (cookie: string) =>
-  requiredCookieKeys.every((key) => cookie.includes(`${key}=`))
+export const hasRequiredBaiduCookieFields = (cookie: string) => requiredCookieKeys.every((key) => cookie.includes(`${key}=`))

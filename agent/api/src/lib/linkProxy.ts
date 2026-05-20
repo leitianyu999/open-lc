@@ -5,8 +5,7 @@ const version = 'v1'
 const keyId = 'k1'
 const aad = `${version}.${keyId}`
 
-const base64url = (buffer: Buffer) =>
-  buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+const base64url = (buffer: Buffer) => buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 
 const deriveKey = (secret: string) => crypto.createHash('sha256').update(secret).digest()
 
@@ -51,7 +50,7 @@ export const getLinkProxyConfig = () => {
   }
 }
 
-export const setLinkProxyConfig = (input: { baseUrl?: unknown, secret?: unknown }) => {
+export const setLinkProxyConfig = (input: { baseUrl?: unknown; secret?: unknown }) => {
   if (Object.hasOwn(input, 'baseUrl')) {
     setSetting('linkProxyBaseUrl', input.baseUrl)
   }
@@ -61,23 +60,27 @@ export const setLinkProxyConfig = (input: { baseUrl?: unknown, secret?: unknown 
   return getLinkProxyConfig()
 }
 
-export const createProxiedDownloadUrl = (rawUrl: string, input?: {
-  filename?: string | null
-  expiresAt?: Date | null
-}) => {
+export const createProxiedDownloadUrl = (
+  rawUrl: string,
+  input?: {
+    filename?: string | null
+    expiresAt?: Date | null
+  },
+) => {
   const proxy = getLinkProxyConfig()
   if (!proxy.enabled || !isPcsUrl(rawUrl)) return rawUrl
 
   try {
-    const exp = input?.expiresAt
-      ? Math.floor(input.expiresAt.getTime() / 1000)
-      : Math.floor(Date.now() / 1000) + getDownloadSettings().linkCacheTtlSeconds
-    const token = encryptPayload({
-      url: rawUrl,
-      exp,
-      filename: input?.filename ?? undefined,
-      contentType: contentTypeForFilename(input?.filename),
-    }, proxy.secret)
+    const exp = input?.expiresAt ? Math.floor(input.expiresAt.getTime() / 1000) : Math.floor(Date.now() / 1000) + getDownloadSettings().linkCacheTtlSeconds
+    const token = encryptPayload(
+      {
+        url: rawUrl,
+        exp,
+        filename: input?.filename ?? undefined,
+        contentType: contentTypeForFilename(input?.filename),
+      },
+      proxy.secret,
+    )
     return `${proxy.baseUrl}/lc/${version}.${keyId}.${token}?download=1`
   } catch {
     return rawUrl
