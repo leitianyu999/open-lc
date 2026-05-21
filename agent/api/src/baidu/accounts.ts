@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { db, sqlite } from '../db'
 import {
   accountHealthChecks,
@@ -13,6 +13,7 @@ import {
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors'
 import { getAccountPolicy } from '../settings/service'
 import { probeBaiduAccountCookie, probeBaiduOpenPlatform, recordAccountHealthCheck, type AccountProbeResult } from './accountProbe'
+import { accountUsabilityMessage, accountUsabilityReason, isHealthManagedDisabledSource, isUsableLocalAccount } from './accountUsability'
 import { BaiduClient } from './client'
 import { hasRequiredBaiduCookieFields, normalizeBaiduCookie } from './cookie'
 import type { CredentialSource } from './types'
@@ -146,6 +147,9 @@ const tryLockAccount = (accountId: number) => {
         eq(baiduAccounts.status, 'active'),
         or(isNull(baiduAccounts.lockedUntil), lt(baiduAccounts.lockedUntil, now)),
         or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+        eq(baiduAccounts.healthStatus, 'healthy'),
+        eq(baiduAccounts.isSvip, true),
+        or(sql`${baiduAccounts.credentialSource} != 'open_platform'`, inArray(baiduAccounts.tokenStatus, ['valid', 'refreshed'])),
       ),
     )
     .run()
@@ -159,19 +163,21 @@ export const releaseAccount = (accountId: number) => {
 
 export const markAccountSuccess = (accountId: number, context?: { parseJobId?: number | null; parseRecordId?: number | null }) => {
   const before = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
+  const canRecoverAfterSuccess = before ? isUsableLocalAccount({ ...before, status: 'active', cooldownUntil: null, lockedUntil: null }) : true
+  const shouldKeepDisabled = before?.status === 'disabled' && (!isHealthManagedDisabledSource(before.disabledSource) || !canRecoverAfterSuccess)
   db.update(baiduAccounts)
     .set({
       lockedUntil: null,
-      cooldownUntil: null,
-      status: 'active',
-      reason: '',
+      cooldownUntil: shouldKeepDisabled ? before?.cooldownUntil : null,
+      status: shouldKeepDisabled ? before?.status : 'active',
+      reason: shouldKeepDisabled ? before?.reason : '',
       lastUsedAt: new Date(),
       lastSuccessAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(baiduAccounts.id, accountId))
     .run()
-  if (before && (before.status !== 'active' || before.reason || before.lastFailureCode || before.cooldownUntil)) {
+  if (!shouldKeepDisabled && before && (before.status !== 'active' || before.reason || before.lastFailureCode || before.cooldownUntil)) {
     recordAccountStatusEvent({
       accountId,
       oldStatus: before.status,
@@ -241,6 +247,9 @@ export const acquireLocalAccount = (ownerUserId: number) => {
         eq(baiduAccounts.ownerUserId, ownerUserId),
         eq(baiduAccounts.status, 'active'),
         or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+        eq(baiduAccounts.healthStatus, 'healthy'),
+        eq(baiduAccounts.isSvip, true),
+        or(sql`${baiduAccounts.credentialSource} != 'open_platform'`, inArray(baiduAccounts.tokenStatus, ['valid', 'refreshed'])),
       ),
     )
     .orderBy(desc(baiduAccounts.weight), asc(baiduAccounts.id))
@@ -265,6 +274,9 @@ export const hasLocalAccountCandidate = (ownerUserId: number) => {
         eq(baiduAccounts.ownerUserId, ownerUserId),
         eq(baiduAccounts.status, 'active'),
         or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+        eq(baiduAccounts.healthStatus, 'healthy'),
+        eq(baiduAccounts.isSvip, true),
+        or(sql`${baiduAccounts.credentialSource} != 'open_platform'`, inArray(baiduAccounts.tokenStatus, ['valid', 'refreshed'])),
       ),
     )
     .get()
@@ -282,8 +294,12 @@ export const acquireAccountById = (accountId: number) => {
     .where(
       and(
         eq(baiduAccounts.id, accountId),
-        sql`${baiduAccounts.status} != 'disabled'`,
+        eq(baiduAccounts.status, 'active'),
         or(isNull(baiduAccounts.lockedUntil), lt(baiduAccounts.lockedUntil, now)),
+        or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+        eq(baiduAccounts.healthStatus, 'healthy'),
+        eq(baiduAccounts.isSvip, true),
+        or(sql`${baiduAccounts.credentialSource} != 'open_platform'`, inArray(baiduAccounts.tokenStatus, ['valid', 'refreshed'])),
       ),
     )
     .run()
@@ -355,6 +371,8 @@ export const addAccount = async (input: {
         weight,
         baiduName: health.baiduName ?? existing.baiduName,
         vipType: health.vipType ?? existing.vipType,
+        vipLeftSeconds: health.vipLeftSeconds ?? null,
+        vipExpiresAt: health.vipExpiresAt ?? null,
         status: isHealthy ? 'active' : 'disabled',
         reason: isHealthy ? '' : health.message.slice(0, 300),
         disabledSource: isHealthy ? null : (health.disabledSource ?? 'health_transient_failure'),
@@ -415,6 +433,8 @@ export const addAccount = async (input: {
       uk: health.uk,
       baiduName: health.baiduName,
       vipType: health.vipType ?? 'unknown',
+      vipLeftSeconds: health.vipLeftSeconds ?? null,
+      vipExpiresAt: health.vipExpiresAt ?? null,
       status: 'active',
       disabledSource: null,
       healthStatus: 'healthy',
@@ -613,6 +633,8 @@ export const listOwnedAccounts = (owner: User) => {
         .all()
       return {
         ...account,
+        usabilityReason: accountUsabilityReason(account),
+        usabilityMessage: accountUsabilityMessage(accountUsabilityReason(account)),
         usage: {
           totalParses: Number(usage?.totalParses ?? 0),
         },
@@ -672,8 +694,15 @@ export const probeOwnedAccount = async (input: {
   return result
 }
 
-export const setOwnedAccountStatus = (accountId: number, status: AccountStatus, owner: User) => {
-  assertAccountOwner(accountId, owner)
+export const setOwnedAccountStatus = async (accountId: number, status: AccountStatus, owner: User) => {
+  const account = assertAccountOwner(accountId, owner)
+  if (status === 'active') {
+    const { assertAccountHealthyForEnable } = await import('./health')
+    await assertAccountHealthyForEnable(account, owner)
+    const refreshed = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
+    const reason = refreshed ? accountUsabilityReason({ ...refreshed, status: 'active', cooldownUntil: null, lockedUntil: null }) : null
+    if (reason) throw badRequest('ACCOUNT_NOT_USABLE', accountUsabilityMessage(reason), { reason })
+  }
   setAccountOwnerStatus(accountId, status, status === 'active' ? '账号所有者启用' : '账号所有者暂停', owner)
   return db.select().from(baiduAccounts).where(eq(baiduAccounts.id, accountId)).get()
 }
@@ -684,6 +713,71 @@ export const deleteOwnedAccount = (accountId: number, owner: User) => {
     throw conflict('ACCOUNT_LOCKED', '账号当前正在执行任务，请稍后再试')
   }
   db.delete(baiduAccounts).where(eq(baiduAccounts.id, accountId)).run()
+}
+
+export const exportOwnedAccountCredentials = (accountId: number, owner: User) => {
+  const account = assertAccountOwner(accountId, owner)
+  if (account.lockedUntil && account.lockedUntil.getTime() > Date.now()) {
+    throw conflict('ACCOUNT_LOCKED', '账号当前正在执行任务，请稍后再试')
+  }
+
+  const exportedAt = new Date()
+  const reason = '凭据已导出，账号已自动禁用'
+  const credentials =
+    account.credentialSource === 'open_platform'
+      ? {
+          refreshToken: account.refreshToken,
+          accessToken: account.accessToken,
+          tokenExpiresAt: account.tokenExpiresAt?.toISOString() ?? null,
+          openPlatformDriver: account.openPlatformDriver,
+          openPlatformClientKey: account.openPlatformClientKey,
+          openPlatformSecretKey: account.openPlatformSecretKey,
+          openPlatformServerUse: account.openPlatformServerUse,
+        }
+      : {
+          cookie: account.cookie,
+        }
+
+  db.update(baiduAccounts)
+    .set({
+      status: 'disabled',
+      reason,
+      disabledSource: 'credential_export',
+      cooldownUntil: null,
+      lockedUntil: null,
+      updatedAt: exportedAt,
+    })
+    .where(eq(baiduAccounts.id, accountId))
+    .run()
+
+  recordAccountStatusEvent({
+    accountId,
+    oldStatus: account.status,
+    newStatus: 'disabled',
+    oldReason: account.reason,
+    newReason: reason,
+    source: 'owner_credential_export',
+    actorUserId: owner.id,
+    message: '账号凭据已导出并自动禁用',
+  })
+
+  return {
+    exportedAt: exportedAt.toISOString(),
+    account: {
+      id: account.id,
+      label: account.label,
+      baiduName: account.baiduName,
+      uk: account.uk,
+      credentialSource: account.credentialSource,
+      openPlatformServerUse: account.openPlatformServerUse,
+    },
+    credentials,
+    postAction: {
+      status: 'disabled',
+      disabledSource: 'credential_export',
+      reason,
+    },
+  }
 }
 
 export const getOwnedAccountDetail = (accountId: number, owner: User) => {

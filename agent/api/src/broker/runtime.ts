@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { parseLinksForBroker } from '../baidu/service'
+import { accountUsabilityMessage, accountUsabilityReason, isUsableLocalAccount } from '../baidu/accountUsability'
 import { appSettings, baiduAccounts, brokerRunEvents, brokerRuns, type BaiduAccount, type BrokerRun } from '../db/schema'
 import { ensureSystemUser } from '../localUser'
 import { badRequest, upstreamError } from '../lib/errors'
@@ -46,6 +47,7 @@ export type PublicBrokerConfig = Omit<BrokerConfig, 'agentToken'> & {
 }
 
 export type BrokerRunStatus = BrokerRun['status']
+export type BrokerRuntimeState = 'running' | 'disabled' | 'misconfigured' | 'paused_no_usable_accounts' | 'maintenance_stopping'
 
 type LegacyBrokerConfig = Partial<BrokerConfig>
 
@@ -109,6 +111,7 @@ type RuntimeEventInput = {
 const brokerConfigKey = 'agent_broker_config'
 const legacyBrokerRunsKey = 'agent_broker_runs'
 const maxAllowedConcurrentRuns = 5
+const brokerRequestTimeoutMs = 30_000
 const activeRunStatuses: BrokerRunStatus[] = ['idle', 'polling', 'participating', 'waiting', 'active', 'parsing', 'submitting']
 const terminalStatuses = new Set<BrokerRunStatus>(['success', 'failed', 'not_selected', 'expired', 'submitted_success', 'submitted_failure'])
 
@@ -117,6 +120,8 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let runtimeStarted = false
 let pollLoopRunning = false
 let heartbeatLoopRunning = false
+let pollLoopStartedAt: Date | null = null
+let heartbeatLoopStartedAt: Date | null = null
 const runningExecutions = new Set<string>()
 let legacyConfigMigrated = false
 let maintenanceStopping = false
@@ -247,19 +252,21 @@ export const getPublicBrokerConfig = (broker = getBrokerConfig()): PublicBrokerC
 
 const saveBrokerRuntimeState = (configValue: Partial<BrokerConfig>) => {
   const current = getBrokerRuntimeState()
+  const pick = <K extends keyof BrokerConfig>(key: K, fallback: BrokerConfig[K]) =>
+    Object.prototype.hasOwnProperty.call(configValue, key) ? configValue[key] : ((current[key] as BrokerConfig[K] | undefined) ?? fallback)
   setJson(brokerConfigKey, {
-    lastHeartbeatAt: configValue.lastHeartbeatAt ?? current.lastHeartbeatAt ?? null,
-    lastHeartbeatStatus: configValue.lastHeartbeatStatus ?? current.lastHeartbeatStatus ?? 'idle',
-    lastHeartbeatHttpStatus: configValue.lastHeartbeatHttpStatus ?? current.lastHeartbeatHttpStatus ?? null,
-    lastHeartbeatErrorCode: configValue.lastHeartbeatErrorCode ?? current.lastHeartbeatErrorCode ?? null,
-    lastHeartbeatErrorMessage: configValue.lastHeartbeatErrorMessage ?? current.lastHeartbeatErrorMessage ?? null,
-    lastPollAt: configValue.lastPollAt ?? current.lastPollAt ?? null,
-    lastPollStatus: configValue.lastPollStatus ?? current.lastPollStatus ?? 'idle',
-    lastPollHttpStatus: configValue.lastPollHttpStatus ?? current.lastPollHttpStatus ?? null,
-    lastPollErrorCode: configValue.lastPollErrorCode ?? current.lastPollErrorCode ?? null,
-    lastPollErrorMessage: configValue.lastPollErrorMessage ?? current.lastPollErrorMessage ?? null,
-    lastRequestBaseUrl: configValue.lastRequestBaseUrl ?? current.lastRequestBaseUrl ?? null,
-    lastError: configValue.lastError ?? current.lastError ?? null,
+    lastHeartbeatAt: pick('lastHeartbeatAt', null),
+    lastHeartbeatStatus: pick('lastHeartbeatStatus', 'idle'),
+    lastHeartbeatHttpStatus: pick('lastHeartbeatHttpStatus', null),
+    lastHeartbeatErrorCode: pick('lastHeartbeatErrorCode', null),
+    lastHeartbeatErrorMessage: pick('lastHeartbeatErrorMessage', null),
+    lastPollAt: pick('lastPollAt', null),
+    lastPollStatus: pick('lastPollStatus', 'idle'),
+    lastPollHttpStatus: pick('lastPollHttpStatus', null),
+    lastPollErrorCode: pick('lastPollErrorCode', null),
+    lastPollErrorMessage: pick('lastPollErrorMessage', null),
+    lastRequestBaseUrl: pick('lastRequestBaseUrl', null),
+    lastError: pick('lastError', null),
   })
 }
 
@@ -293,6 +300,12 @@ const brokerHeaders = (configValue: BrokerConfig) => ({
   'Content-Type': 'application/json',
 })
 
+const brokerTimeoutError = (targetUrl: string) =>
+  upstreamError('BROKER_REQUEST_TIMEOUT', `Broker 请求超过 ${Math.round(brokerRequestTimeoutMs / 1000)} 秒未响应`, {
+    httpStatus: null,
+    targetUrl,
+  })
+
 const requestBrokerJson = async <T>(
   path: string,
   options: {
@@ -309,11 +322,22 @@ const requestBrokerJson = async <T>(
     })
   }
   const targetUrl = new URL(path, broker.baseUrl).toString()
-  const response = await fetch(targetUrl, {
-    method: options.method ?? 'GET',
-    headers: brokerHeaders(broker),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), brokerRequestTimeoutMs)
+  let response: Response
+  try {
+    response = await fetch(targetUrl, {
+      method: options.method ?? 'GET',
+      headers: brokerHeaders(broker),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (controller.signal.aborted) throw brokerTimeoutError(targetUrl)
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
   const json = (await response.json().catch(() => null)) as Record<string, unknown> | null
   if (!response.ok) {
     const error = upstreamError(
@@ -492,13 +516,32 @@ const parseIsoDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-const buildCapabilities = () => {
-  const accounts = db
+const listLocallyAvailableAccounts = () => {
+  const now = new Date()
+  return db
     .select()
     .from(baiduAccounts)
-    .where(and(eq(baiduAccounts.status, 'active'), or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, new Date()))))
+    .where(
+      and(
+        eq(baiduAccounts.status, 'active'),
+        or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, now)),
+        eq(baiduAccounts.healthStatus, 'healthy'),
+        eq(baiduAccounts.isSvip, true),
+        or(sql`${baiduAccounts.credentialSource} != 'open_platform'`, inArray(baiduAccounts.tokenStatus, ['valid', 'refreshed'])),
+      ),
+    )
     .all()
+}
 
+const listBlockedAccounts = () =>
+  db
+    .select()
+    .from(baiduAccounts)
+    .orderBy(sql`${baiduAccounts.id} ASC`)
+    .all()
+    .filter((account) => !isUsableLocalAccount(account))
+
+const buildCapabilities = (accounts = listLocallyAvailableAccounts()) => {
   return {
     providers: ['baidu'],
     max_file_size: getParseLimits().maxTotalSizeBytes,
@@ -507,24 +550,70 @@ const buildCapabilities = () => {
   }
 }
 
+const runtimeStateFor = (broker = getBrokerConfig(), usableAccountCount = listLocallyAvailableAccounts().length) => {
+  if (maintenanceStopping) return { state: 'maintenance_stopping' as const, message: '本地维护中，Broker 执行已暂停' }
+  if (!broker.enabled) return { state: 'disabled' as const, message: 'Broker 执行未启用' }
+  if (!broker.baseUrl || !broker.agentToken) return { state: 'misconfigured' as const, message: 'Broker Base URL 或 Agent Token 未配置' }
+  if (usableAccountCount <= 0) return { state: 'paused_no_usable_accounts' as const, message: '无可用 SVIP 账号，Broker 执行已暂停' }
+  return { state: 'running' as const, message: 'Broker 执行正常运行' }
+}
+
+const brokerRequestLockTimeoutMs = () => brokerRequestTimeoutMs + 5000
+
+const cleanupStaleRuntimeLocks = () => {
+  const now = Date.now()
+  const staleMs = brokerRequestLockTimeoutMs()
+  if (heartbeatLoopRunning && heartbeatLoopStartedAt && now - heartbeatLoopStartedAt.getTime() > staleMs) {
+    heartbeatLoopRunning = false
+    heartbeatLoopStartedAt = null
+    recordBrokerEvent({
+      type: 'heartbeat',
+      status: 'warning',
+      code: 'BROKER_HEARTBEAT_STALE_LOCK',
+      message: 'Heartbeat 运行锁超时，已自动恢复',
+    })
+  }
+  if (pollLoopRunning && pollLoopStartedAt && now - pollLoopStartedAt.getTime() > staleMs) {
+    pollLoopRunning = false
+    pollLoopStartedAt = null
+    recordBrokerEvent({
+      type: 'poll',
+      status: 'warning',
+      code: 'BROKER_POLL_STALE_LOCK',
+      message: 'Poll 运行锁超时，已自动恢复',
+    })
+  }
+}
+
 export const heartbeatBroker = async () => {
   if (maintenanceStopping) return getBrokerConfig()
+  cleanupStaleRuntimeLocks()
   if (heartbeatLoopRunning) return getBrokerConfig()
   heartbeatLoopRunning = true
+  heartbeatLoopStartedAt = new Date()
   const broker = getBrokerConfig()
   if (!broker.enabled || !broker.baseUrl || !broker.agentToken) {
     heartbeatLoopRunning = false
+    heartbeatLoopStartedAt = null
     return broker
   }
+  const accounts = listLocallyAvailableAccounts()
+  const state = runtimeStateFor(broker, accounts.length)
+  if (state.state !== 'running') {
+    heartbeatLoopRunning = false
+    heartbeatLoopStartedAt = null
+    return getBrokerConfig()
+  }
   try {
-    await requestBrokerJson('/api/lc/agent/heartbeat', {
+    const response = await requestBrokerJson<Record<string, unknown>>('/api/lc/agent/heartbeat', {
       method: 'POST',
       body: {
         available: true,
-        capabilities: buildCapabilities(),
+        capabilities: buildCapabilities(accounts),
         client_version: agentClientVersion,
       },
     })
+    const tooEarly = String(response.status ?? '') === 'too_early'
     writeBrokerConfigPatch({
       lastHeartbeatAt: new Date().toISOString(),
       lastHeartbeatStatus: 'ok',
@@ -536,8 +625,9 @@ export const heartbeatBroker = async () => {
     })
     recordBrokerEvent({
       type: 'heartbeat',
-      status: 'success',
-      message: 'Heartbeat 成功',
+      status: tooEarly ? 'warning' : 'success',
+      code: tooEarly ? 'BROKER_HEARTBEAT_TOO_EARLY' : null,
+      message: tooEarly ? 'Heartbeat 被 Broker 轮询租约限制' : 'Heartbeat 成功',
     })
   } catch (error) {
     const info = appErrorInfo(error)
@@ -558,6 +648,7 @@ export const heartbeatBroker = async () => {
     })
   } finally {
     heartbeatLoopRunning = false
+    heartbeatLoopStartedAt = null
   }
   return getBrokerConfig()
 }
@@ -899,13 +990,22 @@ const normalizeLegacyRunStatus = (status?: string): BrokerRunStatus => {
 
 export const brokerLoop = async () => {
   if (maintenanceStopping) return getBrokerRuntimeSnapshot()
+  cleanupStaleRuntimeLocks()
   if (pollLoopRunning) return getBrokerRuntimeSnapshot()
   pollLoopRunning = true
+  pollLoopStartedAt = new Date()
   try {
     adoptLegacyRuns()
-    await heartbeatBroker()
     const broker = getBrokerConfig()
     if (!broker.enabled || !broker.baseUrl || !broker.agentToken) return getBrokerRuntimeSnapshot()
+    const usableAccounts = listLocallyAvailableAccounts()
+    const state = runtimeStateFor(broker, usableAccounts.length)
+    if (state.state !== 'running') {
+      return getBrokerRuntimeSnapshot()
+    }
+    if (!heartbeatLoopRunning) {
+      void heartbeatBroker()
+    }
 
     const capacity = Math.max(0, broker.maxConcurrentRuns - countActiveRuns())
     if (capacity <= 0) {
@@ -981,6 +1081,7 @@ export const brokerLoop = async () => {
     })
   } finally {
     pollLoopRunning = false
+    pollLoopStartedAt = null
   }
   return getBrokerRuntimeSnapshot()
 }
@@ -997,11 +1098,15 @@ const accountSnapshot = (account: BaiduAccount) => ({
   quotaTotalBytes: account.quotaTotalBytes,
   quotaUsedBytes: account.quotaUsedBytes,
   quotaFreeBytes: account.quotaFreeBytes,
+  vipLeftSeconds: account.vipLeftSeconds,
+  vipExpiresAt: account.vipExpiresAt,
   lastSuccessAt: account.lastSuccessAt,
   lastFailureAt: account.lastFailureAt,
   lastFailureCode: account.lastFailureCode,
   tokenCheckedAt: account.tokenCheckedAt,
   tokenLastRefreshedAt: account.tokenLastRefreshedAt,
+  usabilityReason: accountUsabilityReason(account),
+  usabilityMessage: accountUsabilityMessage(accountUsabilityReason(account)),
 })
 
 const serializeRun = (run: BrokerRun) => ({
@@ -1098,19 +1203,20 @@ export const endBrokerMaintenanceStop = (options: { restart?: boolean } = {}) =>
 }
 
 export const getBrokerRuntimeSnapshot = () => {
+  cleanupStaleRuntimeLocks()
   adoptLegacyRuns()
   const broker = getBrokerConfig()
-  const availableAccounts = db
-    .select()
-    .from(baiduAccounts)
-    .where(and(eq(baiduAccounts.status, 'active'), or(isNull(baiduAccounts.cooldownUntil), lt(baiduAccounts.cooldownUntil, new Date()))))
-    .all()
+  const availableAccounts = listLocallyAvailableAccounts()
+  const blockedAccounts = listBlockedAccounts()
   const active = activeRuns().map(serializeRun)
   const recent = listBrokerRuns(50)
+  const state = runtimeStateFor(broker, availableAccounts.length)
 
   return {
     broker: getPublicBrokerConfig(broker),
     runtime: {
+      state: state.state,
+      stateMessage: state.message,
       started: runtimeStarted,
       activeRunCount: active.length,
       capacity: Math.max(0, broker.maxConcurrentRuns - active.length),
@@ -1118,8 +1224,14 @@ export const getBrokerRuntimeSnapshot = () => {
       runningExecutions: runningExecutions.size,
       pollLoopRunning,
       heartbeatLoopRunning,
+      pollLoopStartedAt: pollLoopStartedAt?.toISOString() ?? null,
+      heartbeatLoopStartedAt: heartbeatLoopStartedAt?.toISOString() ?? null,
+      requestTimeoutMs: brokerRequestTimeoutMs,
+      usableAccountCount: availableAccounts.length,
+      blockedAccountCount: blockedAccounts.length,
     },
     activeAccounts: availableAccounts.map(accountSnapshot),
+    blockedAccounts: blockedAccounts.map(accountSnapshot),
     activeRuns: active,
     recentRuns: recent,
   }
@@ -1184,4 +1296,8 @@ export const stopAgentBrokerRuntime = () => {
     pollTimer = null
   }
   runtimeStarted = false
+  heartbeatLoopRunning = false
+  pollLoopRunning = false
+  heartbeatLoopStartedAt = null
+  pollLoopStartedAt = null
 }

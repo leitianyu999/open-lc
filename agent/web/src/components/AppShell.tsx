@@ -1,8 +1,8 @@
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { useSetAtom } from 'jotai'
-import { AlertCircle, Bot, Database, History, LayoutDashboard, Loader2, Lock, Settings } from 'lucide-react'
+import { AlertCircle, Bot, Database, ExternalLink, History, LayoutDashboard, Loader2, Lock, RefreshCw, Settings, Sparkles } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
-import { api, clearStoredAgentPassword, getStoredAgentPassword, messageFromError, setStoredAgentPassword } from '../api'
+import { api, clearStoredAgentPassword, errorMessage, getStoredAgentPassword, honoClient, messageFromError, setStoredAgentPassword, type UpdateCheck } from '../api'
 import { clearNotificationsAtom } from '../state'
 import { agentVersion } from '../version'
 import { NotificationCenter } from './Common'
@@ -29,15 +29,24 @@ export function AppShell() {
   const [unlocked, setUnlocked] = useState(false)
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [manualUpdateCheck, setManualUpdateCheck] = useState<UpdateCheck | null>(null)
+  const [manualUpdateError, setManualUpdateError] = useState<string | null>(null)
+  const [manualUpdatePending, setManualUpdatePending] = useState(false)
   const statusQuery = api.api.security.status.$get.useQuery()
   const agentSettingsQuery = api.api.settings.$get.useQuery({
     enabled: unlocked,
+  })
+  const updateCheckQuery = api.api.system['update-check'].$get.useQuery({
+    enabled: unlocked,
+    retry: false,
+    staleTime: 60 * 60 * 1000,
   })
   const loginMutation = api.api.security.login.$post.useMutation()
   const passwordEnabled = statusQuery.data?.data.passwordEnabled === true
   const brokerEnabledSetting = agentSettingsQuery.data?.data.items.brokerEnabled
   const showBrokerNav = !brokerEnabledSetting || brokerEnabledSetting.value === 'true'
   const visibleNavItems = navItems.filter((item) => !('feature' in item) || item.feature !== 'broker' || showBrokerNav)
+  const updateCheck = manualUpdateCheck ?? updateCheckQuery.data?.data
 
   useLayoutEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: 'auto' })
@@ -81,6 +90,25 @@ export function AppShell() {
     }
   }
 
+  const checkUpdateNow = async () => {
+    if (manualUpdatePending) return
+    setManualUpdatePending(true)
+    setManualUpdateError(null)
+    try {
+      const response = await honoClient.api.system['update-check'].$get({
+        query: { force: 'true' },
+      })
+      if (!response.ok) throw new Error(await errorMessage(response))
+      const body = (await response.json()) as { data: UpdateCheck }
+      setManualUpdateCheck(body.data)
+      await updateCheckQuery.refetch()
+    } catch (error) {
+      setManualUpdateError(messageFromError(error, '更新检测失败'))
+    } finally {
+      setManualUpdatePending(false)
+    }
+  }
+
   if (statusQuery.isLoading || (passwordEnabled && loginMutation.isPending && !unlocked)) {
     return <SecurityLoading />
   }
@@ -110,7 +138,7 @@ export function AppShell() {
             <img className="size-10 shrink-0 rounded-lg object-cover shadow-sm ring-1 ring-slate-200" src={appIconSrc} alt="" />
             <div className="min-w-0">
               <div className="truncate text-lg font-bold">LC Agent</div>
-              <div className="text-xs font-medium text-slate-500">v{agentVersion}</div>
+              <VersionLabel checking={manualUpdatePending} error={manualUpdateError} onCheck={() => void checkUpdateNow()} update={updateCheck} />
             </div>
           </div>
           <nav className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 max-md:hidden">
@@ -152,6 +180,69 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
+    </div>
+  )
+}
+
+function VersionLabel({
+  checking,
+  error,
+  onCheck,
+  update,
+}: {
+  checking: boolean
+  error: string | null
+  onCheck: () => void
+  update?: { latestVersion: string | null; releaseUrl: string | null; hasUpdate: boolean; errorMessage: string | null }
+}) {
+  const openRelease = () => {
+    if (!update?.releaseUrl) return
+    window.open(update.releaseUrl, '_blank', 'noopener,noreferrer')
+  }
+  const latestVersion = update?.latestVersion ? `v${update.latestVersion}` : ''
+  const checkTitle = checking
+    ? '正在检查更新'
+    : error
+      ? `更新检测失败: ${error}`
+      : update?.errorMessage
+        ? `更新检测失败: ${update.errorMessage}`
+        : latestVersion
+          ? update?.hasUpdate
+            ? `发现 ${latestVersion}`
+            : `已是最新版本，最新版本 ${latestVersion}`
+          : '检查更新'
+
+  const versionNode = update?.hasUpdate ? (
+    <button
+      className="inline-flex h-4 min-w-0 items-center gap-1 rounded-full text-left text-xs font-medium leading-4 text-slate-500 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+      onClick={openRelease}
+      title={`发现 ${latestVersion || '新版本'}，点击查看 Release`}
+      type="button"
+    >
+      <span className="shrink-0">v{agentVersion}</span>
+      <Sparkles className="size-3 shrink-0 text-blue-600" />
+      <span className="truncate text-blue-700">最新 {latestVersion || '新版本'}</span>
+      <ExternalLink className="size-3 shrink-0" />
+    </button>
+  ) : (
+    <span className="inline-flex h-4 items-center text-xs font-medium leading-4 text-slate-500" title={update?.errorMessage ? `更新检测失败: ${update.errorMessage}` : undefined}>
+      v{agentVersion}
+    </span>
+  )
+
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {versionNode}
+      <button
+        aria-label="检查更新"
+        className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:opacity-70"
+        disabled={checking}
+        onClick={onCheck}
+        title={checkTitle}
+        type="button"
+      >
+        <RefreshCw className={`size-3.5 ${checking ? 'animate-spin' : ''}`} />
+      </button>
     </div>
   )
 }

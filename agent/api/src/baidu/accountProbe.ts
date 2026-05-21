@@ -34,6 +34,8 @@ export type AccountProbeResult = {
   uk?: string
   baiduName?: string
   vipType?: string
+  vipLeftSeconds?: number | null
+  vipExpiresAt?: Date | null
   quotaTotalBytes?: number | null
   quotaUsedBytes?: number | null
   quotaFreeBytes?: number | null
@@ -83,6 +85,27 @@ export const classifyProbeError = (error: unknown): Pick<AccountProbeResult, 'st
     code,
     message,
     deterministic: false,
+  }
+}
+
+export const membershipExpiryFromResponse = (membership: {
+  currenttime?: number
+  reminder?: {
+    serverTime?: number
+    svip?: { leftseconds?: number }
+    vip?: { leftseconds?: number }
+  }
+}) => {
+  const leftSeconds = Number(membership.reminder?.svip?.leftseconds ?? membership.reminder?.vip?.leftseconds ?? 0)
+  if (!Number.isFinite(leftSeconds) || leftSeconds <= 0) {
+    return { vipLeftSeconds: null, vipExpiresAt: null }
+  }
+
+  const baseTimeSeconds = Number(membership.reminder?.serverTime ?? membership.currenttime ?? Math.floor(Date.now() / 1000))
+  const safeBaseTimeSeconds = Number.isFinite(baseTimeSeconds) && baseTimeSeconds > 0 ? baseTimeSeconds : Math.floor(Date.now() / 1000)
+  return {
+    vipLeftSeconds: Math.floor(leftSeconds),
+    vipExpiresAt: new Date((safeBaseTimeSeconds + Math.floor(leftSeconds)) * 1000),
   }
 }
 
@@ -227,6 +250,7 @@ export const probeBaiduOpenPlatform = async (
     const detailCluster = membership.current_product_v2?.detail_cluster
     const isSvip = detailCluster === 'svip' || Number(uinfo.vip_type ?? 0) === 2
     const vipType = isSvip ? 'svip' : Number(uinfo.vip_type ?? 0) === 1 ? 'vip' : 'normal'
+    const membershipExpiry = membershipExpiryFromResponse(membership)
     const uk = String(uinfo.uk ?? '')
     const common = {
       loginValid: true,
@@ -235,6 +259,8 @@ export const probeBaiduOpenPlatform = async (
       uk,
       baiduName: uinfo.baidu_name ?? uinfo.netdisk_name ?? '',
       vipType,
+      vipLeftSeconds: membershipExpiry.vipLeftSeconds,
+      vipExpiresAt: membershipExpiry.vipExpiresAt,
       quotaTotalBytes: quota.total,
       quotaUsedBytes: quota.used,
       quotaFreeBytes: quota.free,
@@ -313,6 +339,8 @@ export const recordAccountHealthCheck = (
       loginValid: boolValue(result.loginValid),
       bdstokenValid: boolValue(result.bdstokenValid),
       isSvip: boolValue(result.isSvip),
+      vipLeftSeconds: result.vipLeftSeconds ?? null,
+      vipExpiresAt: result.vipExpiresAt ?? null,
       quotaTotalBytes: result.quotaTotalBytes ?? null,
       quotaUsedBytes: result.quotaUsedBytes ?? null,
       quotaFreeBytes: result.quotaFreeBytes ?? null,

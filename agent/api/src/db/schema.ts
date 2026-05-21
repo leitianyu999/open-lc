@@ -36,6 +36,8 @@ export const baiduAccounts = sqliteTable(
     uk: text('uk'),
     baiduName: text('baidu_name'),
     vipType: text('vip_type').notNull().default('unknown'),
+    vipLeftSeconds: integer('vip_left_seconds'),
+    vipExpiresAt: integer('vip_expires_at', { mode: 'timestamp_ms' }),
     weight: integer('weight').notNull().default(100),
     status: text('status', { enum: ['active', 'disabled', 'cooldown'] })
       .notNull()
@@ -89,6 +91,8 @@ export const accountHealthChecks = sqliteTable(
     loginValid: integer('login_valid', { mode: 'boolean' }),
     bdstokenValid: integer('bdstoken_valid', { mode: 'boolean' }),
     isSvip: integer('is_svip', { mode: 'boolean' }),
+    vipLeftSeconds: integer('vip_left_seconds'),
+    vipExpiresAt: integer('vip_expires_at', { mode: 'timestamp_ms' }),
     quotaTotalBytes: integer('quota_total_bytes'),
     quotaUsedBytes: integer('quota_used_bytes'),
     quotaFreeBytes: integer('quota_free_bytes'),

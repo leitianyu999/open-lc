@@ -29,10 +29,23 @@ const currentFailureMessage = (broker: BrokerRuntime['broker']) => {
   return null
 }
 
-const runtimeDiagnosis = (broker: BrokerRuntime['broker']) => {
+const runtimeStateLabel = (state?: string) => {
+  if (state === 'running') return '运行中'
+  if (state === 'disabled') return '未启用'
+  if (state === 'misconfigured') return '未配置'
+  if (state === 'paused_no_usable_accounts') return '无可用账号'
+  if (state === 'maintenance_stopping') return '维护中'
+  return '未知'
+}
+
+const runtimeDiagnosis = (runtime: BrokerRuntime) => {
+  const broker = runtime.broker
   if (!broker.agentTokenConfigured) return { variant: 'warning' as const, message: 'Agent Token 未配置，Broker 不会接收心跳或任务轮询。' }
   if (!broker.baseUrl) return { variant: 'warning' as const, message: 'Broker Base URL 未配置，Agent 无法发起连接。' }
   if (!broker.enabled) return { variant: 'warning' as const, message: 'Broker 执行未启用，自动心跳和 Poll 不会运行。' }
+  if (runtime.runtime.state === 'paused_no_usable_accounts') {
+    return { variant: 'warning' as const, message: runtime.runtime.stateMessage || '无可用 SVIP 账号，Broker 执行已暂停。' }
+  }
   if (
     (broker.lastHeartbeatStatus === 'failed' && broker.lastHeartbeatErrorCode === 'INVALID_AGENT_TOKEN') ||
     (broker.lastPollStatus === 'failed' && broker.lastPollErrorCode === 'INVALID_AGENT_TOKEN')
@@ -66,7 +79,9 @@ export function BrokerPage() {
   const activeRuns = runtime?.activeRuns ?? []
   const failureSignature = broker ? currentFailureSignature(broker) : null
   const failureMessage = broker ? currentFailureMessage(broker) : null
-  const diagnosis = broker ? runtimeDiagnosis(broker) : null
+  const diagnosis = runtime ? runtimeDiagnosis(runtime) : null
+  const brokerActionsDisabled = !broker || runtime?.runtime.state !== 'running'
+  const brokerActionTitle = runtime?.runtime.state === 'paused_no_usable_accounts' ? '无可用 SVIP 账号，已暂停 Heartbeat 和 Poll' : undefined
 
   useEffect(() => {
     if (!failureSignature) {
@@ -137,9 +152,16 @@ export function BrokerPage() {
         <div className="grid gap-3 md:grid-cols-4">
           <MetricCard
             action={
-              <Button className="w-full" disabled={!broker || heartbeatMutation.isPending} onClick={heartbeat} size="sm" variant="secondary">
+              <Button
+                className="w-full"
+                disabled={brokerActionsDisabled || heartbeatMutation.isPending || runtime?.runtime.heartbeatLoopRunning}
+                onClick={heartbeat}
+                size="sm"
+                title={brokerActionTitle}
+                variant="secondary"
+              >
                 <Radio className="size-4" />
-                Heartbeat
+                {runtime?.runtime.heartbeatLoopRunning ? 'Heartbeat 中' : 'Heartbeat'}
               </Button>
             }
             label="心跳"
@@ -148,9 +170,16 @@ export function BrokerPage() {
           />
           <MetricCard
             action={
-              <Button className="w-full" disabled={!broker || pollMutation.isPending} onClick={poll} size="sm" variant="secondary">
+              <Button
+                className="w-full"
+                disabled={brokerActionsDisabled || pollMutation.isPending || runtime?.runtime.pollLoopRunning}
+                onClick={poll}
+                size="sm"
+                title={brokerActionTitle}
+                variant="secondary"
+              >
                 <Play className="size-4" />
-                执行一轮 Poll
+                {runtime?.runtime.pollLoopRunning ? 'Poll 中' : '执行一轮 Poll'}
               </Button>
             }
             label="Poll"
@@ -159,16 +188,30 @@ export function BrokerPage() {
           />
           <MetricCard
             label="可用账号"
-            value={runtime?.activeAccounts.length ?? 0}
-            detail={`并发空位 ${runtime?.runtime.capacity ?? 0}/${runtime?.runtime.maxConcurrentRuns ?? 0}`}
+            value={runtime?.runtime.usableAccountCount ?? 0}
+            detail={`不可用 ${runtime?.runtime.blockedAccountCount ?? 0} · 并发空位 ${runtime?.runtime.capacity ?? 0}/${runtime?.runtime.maxConcurrentRuns ?? 0}`}
           />
-          <MetricCard label="运行中" value={runtime?.runtime.activeRunCount ?? 0} detail={runtime?.runtime.started ? 'Runtime 已启动' : 'Runtime 未启动'} />
+          <MetricCard
+            label="Runtime"
+            value={runtimeStateLabel(runtime?.runtime.state)}
+            detail={runtime?.runtime.stateMessage || (runtime?.runtime.started ? 'Runtime 已启动' : 'Runtime 未启动')}
+          />
         </div>
         {broker ? (
           <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-4">
             <RuntimeCell label="Broker Base URL" meta={`来源 ${sourceLabel(broker.baseUrlSource)}`} value={broker.baseUrl || '-'} />
             <RuntimeCell label="Agent Token" meta={`来源 ${sourceLabel(broker.agentTokenSource)}`} value={broker.agentTokenConfigured ? '已配置' : '未配置'} />
             <RuntimeCell label="启用状态" meta={`来源 ${sourceLabel(broker.enabledSource)}`} value={broker.enabled ? '已启用' : '未启用'} />
+            <RuntimeCell
+              label="运行锁"
+              meta={`Heartbeat ${runtime?.runtime.heartbeatLoopStartedAt ? formatDateTime(runtime.runtime.heartbeatLoopStartedAt) : '-'} · Poll ${
+                runtime?.runtime.pollLoopStartedAt ? formatDateTime(runtime.runtime.pollLoopStartedAt) : '-'
+              }`}
+              value={[
+                runtime?.runtime.heartbeatLoopRunning ? 'Heartbeat 运行中' : 'Heartbeat 空闲',
+                runtime?.runtime.pollLoopRunning ? 'Poll 运行中' : 'Poll 空闲',
+              ].join(' · ')}
+            />
             <RuntimeCell
               label="最近请求"
               meta={broker.lastRequestBaseUrl || '-'}

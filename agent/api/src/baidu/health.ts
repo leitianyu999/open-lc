@@ -4,6 +4,7 @@ import { accountHealthChecks, baiduAccounts, type BaiduAccount, type User } from
 import { badRequest, notFound } from '../lib/errors'
 import { getAccountHealthSettings } from '../settings/service'
 import { probeBaiduAccountCookie, probeBaiduOpenPlatform, recordAccountHealthCheck, type AccountProbeResult, type DisabledSource } from './accountProbe'
+import { accountUsabilityMessage, accountUsabilityReason, isHealthManagedDisabledSource } from './accountUsability'
 import { cleanupAccountTokenEvents, verifyOpenPlatformToken } from './openPlatformToken'
 import { recordAccountStatusEvent } from './accounts'
 
@@ -34,7 +35,7 @@ const sourceForExistingFailure = (account: BaiduAccount) => {
 const updateAccountHealth = (account: BaiduAccount, result: HealthResult, actor?: User | null) => {
   const now = new Date()
   const existingSource = sourceForExistingFailure(account)
-  const canAutoRecover = account.disabledSource?.startsWith('health_') || account.disabledSource === 'open_platform_reimport_required'
+  const canAutoRecover = isHealthManagedDisabledSource(account.disabledSource)
   const failures =
     result.status === 'healthy' || result.status === 'skipped_locked' ? 0 : result.deterministic ? 0 : (account.healthConsecutiveFailures ?? 0) + 1
   const thresholdReached = failures >= getAccountHealthSettings().accountHealthTransientFailureThreshold
@@ -48,6 +49,8 @@ const updateAccountHealth = (account: BaiduAccount, result: HealthResult, actor?
     loginValid: result.loginValid ?? null,
     bdstokenValid: result.bdstokenValid ?? null,
     isSvip: result.isSvip ?? null,
+    vipLeftSeconds: result.vipLeftSeconds ?? null,
+    vipExpiresAt: result.vipExpiresAt ?? null,
     quotaTotalBytes: result.quotaTotalBytes ?? null,
     quotaUsedBytes: result.quotaUsedBytes ?? null,
     quotaFreeBytes: result.quotaFreeBytes ?? null,
@@ -120,7 +123,6 @@ export const runAccountHealthCheck = async (
     }
     if (options.persist !== false) {
       recordAccountHealthCheck(account.id, result)
-      updateAccountHealth(account, result, options.actor)
     }
     return result
   }
@@ -177,6 +179,11 @@ export const assertAccountHealthyForEnable = async (account: BaiduAccount, actor
   const result = await runAccountHealthCheck(account, { actor })
   if (result.status !== 'healthy') {
     throw badRequest(result.code, result.message)
+  }
+  const refreshed = db.select().from(baiduAccounts).where(eq(baiduAccounts.id, account.id)).get()
+  const reason = refreshed ? accountUsabilityReason({ ...refreshed, status: 'active', cooldownUntil: null, lockedUntil: null }) : null
+  if (reason) {
+    throw badRequest('ACCOUNT_NOT_USABLE', accountUsabilityMessage(reason), { reason })
   }
   return result
 }

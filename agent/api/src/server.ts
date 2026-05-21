@@ -33,6 +33,7 @@ export const initAgentRuntime = () => {
 
 const startAccountHealthMaintenance = () => {
   if (accountHealthTimer) clearInterval(accountHealthTimer)
+  void runAccountHealthMaintenance()
   accountHealthTimer = setInterval(() => {
     void runAccountHealthMaintenance()
   }, getAccountHealthSettings().accountHealthIntervalSeconds * 1000)

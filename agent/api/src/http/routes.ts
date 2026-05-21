@@ -14,7 +14,15 @@ import {
   reparseHistory,
   submitParseJob,
 } from '../baidu/service'
-import { createOwnedAccount, deleteOwnedAccount, getOwnedAccountDetail, listOwnedAccounts, probeOwnedAccount, setOwnedAccountStatus } from '../baidu/accounts'
+import {
+  createOwnedAccount,
+  deleteOwnedAccount,
+  exportOwnedAccountCredentials,
+  getOwnedAccountDetail,
+  listOwnedAccounts,
+  probeOwnedAccount,
+  setOwnedAccountStatus,
+} from '../baidu/accounts'
 import { runAccountHealthCheckById } from '../baidu/health'
 import { verifyOpenPlatformToken } from '../baidu/openPlatformToken'
 import { db, sqlite } from '../db'
@@ -46,6 +54,7 @@ import {
 import { getBaiduSettings, getDownloadSettings, getSettingsSnapshot, setSettings } from '../settings/service'
 import { getDesktopRuntime, openDesktopExternalBrowser, setDesktopExternalAccess } from '../desktop/runtime'
 import { cleanupRuntimeData, factoryResetAgentData, getMaintenanceSummary } from '../maintenance/service'
+import { getUpdateCheck } from '../update/service'
 
 const client = new BaiduClient()
 
@@ -275,6 +284,8 @@ const accountSnapshot = (account: BaiduAccount) => ({
   quotaTotalBytes: account.quotaTotalBytes,
   quotaUsedBytes: account.quotaUsedBytes,
   quotaFreeBytes: account.quotaFreeBytes,
+  vipLeftSeconds: account.vipLeftSeconds,
+  vipExpiresAt: account.vipExpiresAt,
   lastSuccessAt: account.lastSuccessAt,
   lastFailureAt: account.lastFailureAt,
   lastFailureCode: account.lastFailureCode,
@@ -364,6 +375,11 @@ export const typedRoutes = new Hono<AgentEnv>()
     const data = await openDesktopExternalBrowser()
     return c.json({ code: 'OK', data })
   })
+  .use('/api/system/*', requireAgentPassword)
+  .get('/api/system/update-check', async (c) => {
+    const data = await getUpdateCheck({ force: c.req.query('force') === 'true' })
+    return c.json({ code: 'OK', data })
+  })
   .use('/api/local/*', requireAgentPassword)
   .use('/api/broker/*', requireAgentPassword)
   .get('/api/local/me', (c) => {
@@ -407,10 +423,10 @@ export const typedRoutes = new Hono<AgentEnv>()
     const data = getOwnedAccountDetail(Number(c.req.param('id')), user)
     return c.json({ code: 'OK', data })
   })
-  .patch('/api/local/accounts/:id/status', zValidator('json', accountStatusSchema), (c) => {
+  .patch('/api/local/accounts/:id/status', zValidator('json', accountStatusSchema), async (c) => {
     const user = requireLocalUser(c)
     const body = c.req.valid('json')
-    const data = setOwnedAccountStatus(Number(c.req.param('id')), body.status, user)
+    const data = await setOwnedAccountStatus(Number(c.req.param('id')), body.status, user)
     return c.json({ code: 'OK', data })
   })
   .delete('/api/local/accounts/:id', (c) => {
@@ -435,6 +451,11 @@ export const typedRoutes = new Hono<AgentEnv>()
       allowRefreshFallback: true,
     })
     return c.json({ code: 'OK', data: result })
+  })
+  .post('/api/local/accounts/:id/export-credentials', zValidator('json', emptyJsonSchema), (c) => {
+    const user = requireLocalUser(c)
+    const data = exportOwnedAccountCredentials(Number(c.req.param('id')), user)
+    return c.json({ code: 'OK', data })
   })
   .post('/api/local/browser/share', zValidator('json', shareFilesSchema), async (c) => {
     const body = c.req.valid('json')

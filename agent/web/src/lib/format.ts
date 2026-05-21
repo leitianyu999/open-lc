@@ -31,6 +31,14 @@ export const formatDateTime = (value?: Date | string | number | null) => {
   })
 }
 
+export const formatVipRemaining = (seconds?: number | null) => {
+  const value = Number(seconds ?? 0)
+  if (!Number.isFinite(value) || value <= 0) return ''
+  if (value >= 86400) return `约 ${Math.ceil(value / 86400)} 天`
+  if (value >= 3600) return `约 ${Math.ceil(value / 3600)} 小时`
+  return '少于 1 小时'
+}
+
 export const joinPath = (base: string, name: string) => {
   if (base === '/') return `/${name}`
   return `${base.replace(/\/$/, '')}/${name}`

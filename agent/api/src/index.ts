@@ -8,6 +8,8 @@ import { getAccountHealthSettings } from './settings/service'
 initDb()
 startAgentBrokerRuntime()
 
+void runAccountHealthMaintenance()
+
 setInterval(() => {
   void runAccountHealthMaintenance()
 }, getAccountHealthSettings().accountHealthIntervalSeconds * 1000)
