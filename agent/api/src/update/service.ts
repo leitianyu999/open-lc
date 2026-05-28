@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { agentEnvRaw } from '../config'
 import { db } from '../db'
 import { appSettings } from '../db/schema'
+import { unknownErrorMessage } from '../lib/errors'
 import { agentVersion } from '../version'
 
 const defaultUpdateRepo = 'LeUKi/open-lc'
@@ -111,7 +112,7 @@ export const getUpdateCheck = async (options: { force?: boolean } = {}): Promise
       checkedAt,
       nextCheckAt,
       errorCode: 'UPDATE_CHECK_FAILED',
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: unknownErrorMessage(error),
       cachedAt: checkedAt,
     }
     writeCachedUpdateCheck(result)

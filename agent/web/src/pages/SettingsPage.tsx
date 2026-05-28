@@ -13,7 +13,7 @@ import {
   type RiskConsentType,
 } from '../api'
 import { RiskConsentDialog } from '../components/RiskConsentDialog'
-import { Button, ConfirmDialog, MiddleEllipsis, Modal, Panel } from '../components/ui'
+import { Button, ConfirmDialog, CopyButton, MiddleEllipsis, Modal, Panel } from '../components/ui'
 import { defaultDownloaderForType, parseDownloaders, serializeDownloaders, type DownloaderConfig, type DownloaderType } from '../lib/downloaders'
 import { errorAtom, clearParseExecutionAtom, pushNotificationAtom } from '../state'
 import workerSource from '../../../../scripts/worker.js?raw'
@@ -37,6 +37,7 @@ type PendingRiskConsent = {
 } | null
 type WorkerHelpTab = 'worker' | 'encrypt'
 
+const workerDeployUrl = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc&dir=worker'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const desktopSwitchTimeoutMs = 15_000
 const desktopSwitchPollMs = 350
@@ -379,7 +380,7 @@ function WorkerHelpModal({
       <div className="grid gap-5">
         <div className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-4 text-sm leading-6 text-blue-900">
           <p className="font-semibold">解析出的下载链接可能包含私密令牌。直接暴露真实链接，等同于交出资源访问权，可能带来不必要的损失。</p>
-          <p>Worker 端点用于接收加密后的 token，再由 Worker 解密并代理真实下载链接。这样外部只会看到代理地址，不会直接看到原始直链。</p>
+          <p>Worker 端点用于接收加密后的链接，再由 Worker 解密并代理真实下载链接。这样外部只会看到代理地址，不会直接看到原始直链。</p>
         </div>
         <div className="grid gap-3 text-sm text-slate-700 md:grid-cols-2">
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -392,6 +393,28 @@ function WorkerHelpModal({
               必须和 Worker 环境变量 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code> 保持一致。
             </div>
           </div>
+        </div>
+        <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="min-w-0">
+            <div className="font-bold text-slate-900">部署 Worker</div>
+            <div className="mt-1 leading-6">
+              部署后需要在 Cloudflare Worker 中添加 Secret：
+              <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>
+              ，值需要和本页的 Worker 加密密钥一致。
+            </div>
+            <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 font-mono text-xs leading-5 text-slate-600">
+              Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
+            </div>
+          </div>
+          <a
+            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+            href={workerDeployUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLink className="size-4" />
+            一键部署到 Cloudflare
+          </a>
         </div>
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
@@ -407,7 +430,10 @@ function WorkerHelpModal({
                 </button>
               ))}
             </div>
-            <span className="rounded-md bg-white px-2 py-1 font-mono text-xs font-semibold text-slate-500 ring-1 ring-slate-200">{current.filename}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-white px-2 py-1 font-mono text-xs font-semibold text-slate-500 ring-1 ring-slate-200">{current.filename}</span>
+              <CopyButton value={current.source} label="复制脚本" copiedLabel="已复制" size="sm" />
+            </div>
           </div>
           <pre className="max-h-[54vh] overflow-auto bg-slate-950 px-4 py-4 text-xs leading-5 text-slate-100">
             <code>{current.source}</code>

@@ -1,6 +1,6 @@
 import { db } from '../db'
 import { accountHealthChecks } from '../db/schema'
-import { AppError, badRequest } from '../lib/errors'
+import { AppError, badRequest, unknownErrorMessage } from '../lib/errors'
 import { getAccountHealthSettings } from '../settings/service'
 import { BaiduClient } from './client'
 import { hasRequiredBaiduCookieFields, normalizeBaiduCookie } from './cookie'
@@ -48,7 +48,7 @@ export type AccountProbeResult = {
 
 export const classifyProbeError = (error: unknown): Pick<AccountProbeResult, 'status' | 'code' | 'message' | 'deterministic' | 'disabledSource'> => {
   const code = error instanceof AppError ? error.code : 'HEALTH_UNKNOWN_ERROR'
-  const message = error instanceof Error ? error.message : String(error)
+  const message = unknownErrorMessage(error)
   const text = `${code} ${message}`.toLowerCase()
 
   if (

@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Clock, X, XCircle } from 'lucide-react'
+import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, X, XCircle } from 'lucide-react'
 
 let measureCanvas: HTMLCanvasElement | null = null
 const resizeSubscribers = new Set<() => void>()
@@ -73,7 +73,7 @@ const middleEllipsis = (text: string, width: number, font: string) => {
   return best
 }
 
-const copyTextToClipboard = async (value: string) => {
+export const copyTextToClipboard = async (value: string) => {
   if (!value) return false
   try {
     await navigator.clipboard.writeText(value)
@@ -354,6 +354,60 @@ export function Button({
     >
       {children}
     </button>
+  )
+}
+
+export function CopyButton({
+  value,
+  label = '复制',
+  copiedLabel = '已复制',
+  failedLabel = '复制失败',
+  size = 'sm',
+  className = '',
+  icon,
+  onCopyFailed,
+}: {
+  value: string
+  label?: string
+  copiedLabel?: string
+  failedLabel?: string
+  size?: 'md' | 'sm'
+  className?: string
+  icon?: React.ReactNode
+  onCopyFailed?: () => void
+}) {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const timerRef = useRef<number | null>(null)
+
+  const resetLater = () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current)
+    timerRef.current = window.setTimeout(() => {
+      setStatus('idle')
+      timerRef.current = null
+    }, 1400)
+  }
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current)
+    },
+    [],
+  )
+
+  const copyValue = async () => {
+    const copied = await copyTextToClipboard(value)
+    setStatus(copied ? 'copied' : 'failed')
+    if (!copied) onCopyFailed?.()
+    resetLater()
+  }
+
+  const displayLabel = status === 'copied' ? copiedLabel : status === 'failed' ? failedLabel : label
+
+  return (
+    <Button className={className} disabled={!value} onClick={copyValue} size={size} variant="secondary">
+      {status === 'copied' ? <Check className="size-4" /> : (icon ?? <Copy className="size-4" />)}
+      {displayLabel}
+    </Button>
   )
 }
 

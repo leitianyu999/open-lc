@@ -19,7 +19,9 @@ type WxListResponse = {
 type TransferResponse = {
   errno?: number
   show_msg?: string
-  info?: string
+  info?: unknown
+  errmsg?: string
+  error_msg?: string
   bdstoken?: string
   extra?: {
     list?: SavedFile[]
@@ -28,7 +30,7 @@ type TransferResponse = {
 
 type DownloadResponse = {
   error_code?: number | string
-  error_msg?: string
+  error_msg?: unknown
   errno?: number | string
   urls?: Array<{ url: string }>
 }
@@ -57,7 +59,11 @@ type TemplateVariableResponse = {
     is_svip?: number
     is_evip?: number
   }
-  show_msg?: string
+  show_msg?: unknown
+  errmsg?: unknown
+  error_msg?: unknown
+  info?: unknown
+  error_code?: unknown
 }
 
 type UInfoResponse = {
@@ -67,14 +73,20 @@ type UInfoResponse = {
   netdisk_name?: string
   avatar_url?: string
   vip_type?: number
-  errmsg?: string
-  show_msg?: string
+  errmsg?: unknown
+  show_msg?: unknown
+  error_msg?: unknown
+  info?: unknown
+  error_code?: unknown
 }
 
 type QuotaResponse = {
   errno?: number
-  errmsg?: string
-  error_msg?: string
+  errmsg?: unknown
+  error_msg?: unknown
+  show_msg?: unknown
+  info?: unknown
+  error_code?: unknown
   total?: number | string
   used?: number | string
   free?: number | string
@@ -82,7 +94,10 @@ type QuotaResponse = {
 
 type MembershipResponse = {
   error_code?: number | string
-  error_msg?: string
+  error_msg?: unknown
+  errmsg?: unknown
+  show_msg?: unknown
+  info?: unknown
   currenttime?: number
   current_product_v2?: {
     detail_cluster?: string
@@ -96,9 +111,10 @@ type MembershipResponse = {
 
 type CreateDirectoryResponse = {
   errno?: number
-  info?: string
+  info?: unknown
   errmsg?: string
   show_msg?: string
+  error_msg?: string
   path?: string
   data?: {
     path?: string
@@ -107,8 +123,11 @@ type CreateDirectoryResponse = {
 
 type FileMetasResponse = {
   errno?: number
-  errmsg?: string
-  error_msg?: string
+  errmsg?: unknown
+  error_msg?: unknown
+  show_msg?: unknown
+  info?: unknown
+  error_code?: unknown
   list?: Array<{
     fs_id?: number | string
     dlink?: string
@@ -123,7 +142,8 @@ type FileMetasResponse = {
 type DiskListResponse = {
   errno?: number
   errmsg?: string
-  info?: string
+  error_msg?: string
+  info?: unknown
   show_msg?: string
   list?: Array<{
     category?: number | string
@@ -143,7 +163,11 @@ type DiskListResponse = {
 
 type SignResponse = {
   errno?: number
-  show_msg?: string
+  show_msg?: unknown
+  errmsg?: unknown
+  error_msg?: unknown
+  info?: unknown
+  error_code?: unknown
   data?: {
     sign: string
     timestamp: number
@@ -152,8 +176,11 @@ type SignResponse = {
 
 type ShareDownloadResponse = {
   errno?: number
-  error_msg?: string
-  show_msg?: string
+  error_msg?: unknown
+  show_msg?: unknown
+  errmsg?: unknown
+  info?: unknown
+  error_code?: unknown
   list?:
     | string
     | Array<{
@@ -200,6 +227,36 @@ const mapShareError = (errno: number | string, errtype: number | string) => {
 const toNumber = (value: unknown) => Number(value ?? 0)
 const toString = (value: unknown) => String(value ?? '')
 const diskListOrder = (order?: 'time' | 'filename') => (order === 'time' ? 'time' : 'name')
+
+export const formatUpstreamErrorMessage = (response: {
+  show_msg?: unknown
+  errmsg?: unknown
+  error_msg?: unknown
+  error_code?: unknown
+  info?: unknown
+  errno?: unknown
+}, fallback?: string) => {
+  const formatValue = (value: unknown) => {
+    if (value === undefined || value === null || value === '') return null
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+
+  return (
+    formatValue(response.show_msg) ??
+    formatValue(response.errmsg) ??
+    formatValue(response.error_msg) ??
+    formatValue(response.error_code) ??
+    formatValue(response.info) ??
+    fallback ??
+    (response.errno === undefined || response.errno === null || response.errno === '' ? '未知' : `errno=${response.errno}`)
+  )
+}
 
 const isRetryablePcsError = (error: AppError) => {
   if (error.code === 'BAIDU_HTTP_FAILED') {
@@ -313,7 +370,7 @@ export class BaiduClient {
     })
 
     if (response.errno !== 0) {
-      throw upstreamError('SAVE_TO_DISK_FAILED', `转存失败: ${response.show_msg ?? response.info ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('SAVE_TO_DISK_FAILED', `转存失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
 
     if (!response.extra?.list) {
@@ -345,7 +402,7 @@ export class BaiduClient {
     })
 
     if (response.errno !== 0 || !response.result?.bdstoken) {
-      throw upstreamError('GET_BDSTOKEN_FAILED', `获取 bdstoken 失败: ${response.show_msg ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('GET_BDSTOKEN_FAILED', `获取 bdstoken 失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     if (response.result.loginstate !== undefined && response.result.loginstate !== 1) {
       throw upstreamError('BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED', 'Cookie 未登录或登录态异常', response)
@@ -378,7 +435,7 @@ export class BaiduClient {
       throw upstreamError('COOKIE_INVALID', 'Cookie 格式异常、登录态不完整，或已被百度拒绝', response)
     }
     if (response.errno !== 0 || !response.result) {
-      throw upstreamError('GET_ACCOUNT_TEMPLATE_FAILED', `获取账号模板变量失败: ${response.show_msg ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('GET_ACCOUNT_TEMPLATE_FAILED', `获取账号模板变量失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     return response
   }
@@ -402,7 +459,7 @@ export class BaiduClient {
       throw upstreamError('COOKIE_INVALID', 'BDUSS 无效', response)
     }
     if (response.errno !== undefined && response.errno !== 0) {
-      throw upstreamError('GET_ACCOUNT_UINFO_FAILED', `获取账号信息失败: ${response.show_msg ?? response.errmsg ?? response.errno}`, response)
+      throw upstreamError('GET_ACCOUNT_UINFO_FAILED', `获取账号信息失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     return response
   }
@@ -426,7 +483,7 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.errno !== undefined && response.errno !== 0) {
-      throw upstreamError('GET_ACCOUNT_UINFO_FAILED', `获取开放平台账号信息失败: ${response.show_msg ?? response.errmsg ?? response.errno}`, response)
+      throw upstreamError('GET_ACCOUNT_UINFO_FAILED', `获取开放平台账号信息失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     return response
   }
@@ -451,7 +508,7 @@ export class BaiduClient {
     })
 
     if (response.errno !== undefined && response.errno !== 0) {
-      throw upstreamError('GET_QUOTA_FAILED', `获取空间信息失败: ${response.error_msg ?? response.errmsg ?? response.errno}`, response)
+      throw upstreamError('GET_QUOTA_FAILED', `获取空间信息失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     const total = Number(response.total ?? 0)
     const used = Number(response.used ?? 0)
@@ -481,7 +538,7 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.errno !== undefined && response.errno !== 0) {
-      throw upstreamError('GET_QUOTA_FAILED', `获取开放平台空间信息失败: ${response.error_msg ?? response.errmsg ?? response.errno}`, response)
+      throw upstreamError('GET_QUOTA_FAILED', `获取开放平台空间信息失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
 
     const total = Number(response.total ?? 0)
@@ -511,7 +568,7 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.error_code !== undefined && Number(response.error_code) !== 0) {
-      throw upstreamError('GET_MEMBERSHIP_FAILED', `获取开放平台会员信息失败: ${response.error_msg ?? response.error_code}`, response)
+      throw upstreamError('GET_MEMBERSHIP_FAILED', `获取开放平台会员信息失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     return response
   }
@@ -545,8 +602,7 @@ export class BaiduClient {
     const createdPath = response.path ?? response.data?.path
     if (response.errno === 0 || response.errno === -8) return { path: params.path, createdPath }
 
-    const message = response.info ?? response.errmsg ?? response.show_msg ?? response.errno ?? '未知'
-    throw upstreamError('CREATE_TEMP_DIR_FAILED', `创建转存临时目录失败: ${message}`, response)
+    throw upstreamError('CREATE_TEMP_DIR_FAILED', `创建转存临时目录失败: ${formatUpstreamErrorMessage(response)}`, response)
   }
 
   async createDiskDirectoryByAccessToken(params: { path: string; accessToken: string }): Promise<{ path: string; createdPath?: string }> {
@@ -575,8 +631,7 @@ export class BaiduClient {
     const createdPath = response.path ?? response.data?.path
     if (response.errno === 0 || response.errno === -8) return { path: params.path, createdPath }
 
-    const message = response.info ?? response.errmsg ?? response.show_msg ?? response.errno ?? '未知'
-    throw upstreamError('CREATE_TEMP_DIR_FAILED', `创建开放平台临时目录失败: ${message}`, response)
+    throw upstreamError('CREATE_TEMP_DIR_FAILED', `创建开放平台临时目录失败: ${formatUpstreamErrorMessage(response)}`, response)
   }
 
   async diskPathExists(params: { path: string; cookie: string }) {
@@ -609,8 +664,7 @@ export class BaiduClient {
     }
     if (response.errno === 12 || response.errno === 31066) return false
 
-    const message = response.info ?? response.errmsg ?? response.errno ?? '未知'
-    throw upstreamError('DISK_PATH_CHECK_FAILED', `检查网盘目录失败: ${message}`, response)
+    throw upstreamError('DISK_PATH_CHECK_FAILED', `检查网盘目录失败: ${formatUpstreamErrorMessage(response)}`, response)
   }
 
   async listDiskFiles(params: { dir?: string; page?: number; pageSize?: number; order?: 'time' | 'filename'; cookie: string }): Promise<DiskListResult> {
@@ -636,8 +690,7 @@ export class BaiduClient {
     })
 
     if (response.errno !== 0) {
-      const message = response.info ?? response.errmsg ?? response.show_msg ?? response.errno ?? '未知'
-      throw upstreamError('DISK_LIST_FAILED', `获取网盘文件列表失败: ${message}`, response)
+      throw upstreamError('DISK_LIST_FAILED', `获取网盘文件列表失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
 
     return {
@@ -677,8 +730,7 @@ export class BaiduClient {
     }
     if (response.errno === 12 || response.errno === 31066) return false
 
-    const message = response.info ?? response.errmsg ?? response.errno ?? '未知'
-    throw upstreamError('DISK_PATH_CHECK_FAILED', `检查开放平台网盘目录失败: ${message}`, response)
+    throw upstreamError('DISK_PATH_CHECK_FAILED', `检查开放平台网盘目录失败: ${formatUpstreamErrorMessage(response)}`, response)
   }
 
   async listDiskFilesByAccessToken(params: {
@@ -713,8 +765,7 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.errno !== 0) {
-      const message = response.info ?? response.errmsg ?? response.show_msg ?? response.errno ?? '未知'
-      throw upstreamError('DISK_LIST_FAILED', `获取开放平台网盘文件列表失败: ${message}`, response)
+      throw upstreamError('DISK_LIST_FAILED', `获取开放平台网盘文件列表失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
 
     return {
@@ -743,7 +794,7 @@ export class BaiduClient {
     })
 
     if (response.errno !== 0 || !response.data?.sign || !response.data.timestamp) {
-      throw upstreamError('GET_SIGN_FAILED', `获取 sign 失败: ${response.show_msg ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('GET_SIGN_FAILED', `获取 sign 失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
 
     return {
@@ -759,7 +810,7 @@ export class BaiduClient {
     }
 
     if (response.errno === 112) {
-      throw upstreamError('BAIDU_PAGE_EXPIRED', `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? '页面已过期'}`, response)
+      throw upstreamError('BAIDU_PAGE_EXPIRED', `获取 dlink 失败: ${formatUpstreamErrorMessage(response, '页面已过期')}`, response)
     }
     if (typeof response.list === 'string') {
       throw upstreamError('SHARED_DOWNLOAD_UNSUPPORTED', '获取 dlink 失败: 百度返回了非直链格式，当前 sharedownload 路线不支持该文件', response)
@@ -767,22 +818,22 @@ export class BaiduClient {
     if (response.errno === 9019) {
       throw upstreamError(
         'BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED',
-        `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? 'Cookie 状态异常或账号受限'}`,
+        `获取 dlink 失败: ${formatUpstreamErrorMessage(response, 'Cookie 状态异常或账号受限')}`,
         response,
       )
     }
     if (response.errno === 8001) {
       throw upstreamError(
         'BAIDU_COOKIE_OR_ACCOUNT_RESTRICTED',
-        `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? '账号状态异常或环境受限'}`,
+        `获取 dlink 失败: ${formatUpstreamErrorMessage(response, '账号状态异常或环境受限')}`,
         response,
       )
     }
     if (response.errno === -20) {
-      throw upstreamError('BAIDU_CAPTCHA_OR_RISK_CONTROL', `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? '需要验证码或触发风控'}`, response)
+      throw upstreamError('BAIDU_CAPTCHA_OR_RISK_CONTROL', `获取 dlink 失败: ${formatUpstreamErrorMessage(response, '需要验证码或触发风控')}`, response)
     }
     if (response.errno !== 0 || !response.list?.[0]?.dlink) {
-      throw upstreamError('SHARED_DOWNLOAD_FAILED', `获取 dlink 失败: ${response.error_msg ?? response.show_msg ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('SHARED_DOWNLOAD_FAILED', `获取 dlink 失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
 
     const file = response.list[0]
@@ -830,7 +881,7 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.errno !== 0) {
-      throw upstreamError('SAVE_TO_DISK_FAILED', `开放平台转存失败: ${response.show_msg ?? response.info ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('SAVE_TO_DISK_FAILED', `开放平台转存失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     if (!response.extra?.list) {
       throw upstreamError('SAVE_TO_DISK_FAILED', '开放平台转存成功但未返回文件列表', response)
@@ -938,7 +989,7 @@ export class BaiduClient {
       throw upstreamError('OPEN_PLATFORM_ACCESS_TOKEN_INVALID', 'access_token 无效或已过期', response)
     }
     if (response.errno !== undefined && response.errno !== 0) {
-      throw upstreamError('DLINK_FAILED', `开放平台获取直链失败: ${response.error_msg ?? response.errmsg ?? response.errno}`, response)
+      throw upstreamError('DLINK_FAILED', `开放平台获取直链失败: ${formatUpstreamErrorMessage(response)}`, response)
     }
     const dlink = response.list?.[0]?.dlink
     if (!dlink) {
@@ -974,7 +1025,7 @@ export class BaiduClient {
     })
 
     if (response.error_code || response.error_msg || !response.urls) {
-      throw upstreamError('DLINK_FAILED', `获取直链失败: ${response.error_msg ?? response.error_code ?? response.errno ?? '未知'}`, response)
+      throw upstreamError('DLINK_FAILED', `获取直链失败: ${formatUpstreamErrorMessage({ ...response, errno: response.error_code ?? response.errno })}`, response)
     }
 
     return response.urls
@@ -1068,16 +1119,9 @@ const mapDiskFiles = (list: NonNullable<DiskListResponse['list']>): ShareFile[] 
   }))
 
 const formatFileManagerError = (response: FileManagerResponse) => {
-  const info = Array.isArray(response.info)
-    ? response.info.length > 0
-      ? JSON.stringify(response.info)
-      : undefined
-    : response.info === undefined || response.info === null || response.info === ''
-      ? undefined
-      : String(response.info)
   const requestId = response.request_id ? `，request_id=${response.request_id}` : ''
   const verify = response.authwidget?.safetpl ? `，需要验证=${response.authwidget.safetpl}` : ''
-  return `${response.show_msg ?? response.errmsg ?? info ?? `errno=${response.errno ?? '未知'}`}${requestId}${verify}`
+  return `${formatUpstreamErrorMessage(response)}${requestId}${verify}`
 }
 
 const sanitizeFileManagerResponse = (response: FileManagerResponse) => ({

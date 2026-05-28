@@ -105,6 +105,41 @@ Common runtime paths:
 
 Do not commit real cookies, generated direct links, local SQLite files, or local environment files.
 
+## Deploy Cloudflare Worker
+
+The optional download proxy Worker lives in `worker/` as an independent Cloudflare Worker project.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc&dir=worker)
+
+After deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard. Otherwise, the Worker cannot decrypt generated links.
+
+```txt
+Workers & Pages
+-> Select your deployed Worker
+-> Settings
+-> Variables and Secrets
+-> Add
+-> Secret
+```
+
+```txt
+Name: URL_ENCRYPTION_KEY
+Value: your encryption key
+```
+
+The value must match the Worker encryption key configured in LC Agent.
+
+Manual deploy:
+
+```sh
+cd worker
+npm install
+npx wrangler secret put URL_ENCRYPTION_KEY
+npm run deploy
+```
+
+When using Cloudflare Git deployment, set the root directory to `worker` so only Worker deployment dependencies are installed.
+
 ## Broker Protocol
 
 Open LC includes the public Agent-facing LC v0 Broker protocol so that third-party Broker implementations can be built without copying the official Broker service.

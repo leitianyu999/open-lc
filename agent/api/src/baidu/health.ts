@@ -1,7 +1,7 @@
 import { eq, lt, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { accountHealthChecks, baiduAccounts, type BaiduAccount, type User } from '../db/schema'
-import { badRequest, notFound } from '../lib/errors'
+import { badRequest, notFound, unknownErrorMessage } from '../lib/errors'
 import { getAccountHealthSettings } from '../settings/service'
 import { probeBaiduAccountCookie, probeBaiduOpenPlatform, recordAccountHealthCheck, type AccountProbeResult, type DisabledSource } from './accountProbe'
 import { accountUsabilityMessage, accountUsabilityReason, isHealthManagedDisabledSource } from './accountUsability'
@@ -140,7 +140,7 @@ export const runAccountHealthCheck = async (
               skipRefresh: true,
             })
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
+            const message = unknownErrorMessage(error)
             const code =
               error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'OPEN_PLATFORM_TOKEN_CHECK_FAILED'
             return {

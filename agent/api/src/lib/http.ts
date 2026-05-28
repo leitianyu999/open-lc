@@ -1,4 +1,4 @@
-import { upstreamError } from './errors'
+import { upstreamError, unknownErrorMessage } from './errors'
 import { getParseLimits } from '../settings/service'
 
 type RequestOptions = {
@@ -221,7 +221,7 @@ const requestManualHeaders = async (url: string, method: 'HEAD' | 'GET', headers
     }
     throw upstreamError('BAIDU_HEAD_FAILED', '真实链接跳转失败: 网络错误', {
       url,
-      message: error instanceof Error ? error.message : String(error),
+      message: unknownErrorMessage(error),
     })
   } finally {
     clearTimeout(timeout)

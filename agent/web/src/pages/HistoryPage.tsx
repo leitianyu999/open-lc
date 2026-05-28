@@ -1,10 +1,10 @@
 import { useSetAtom } from 'jotai'
-import { CheckSquare, Clipboard, Copy, Eye, RefreshCw, RotateCcw, Square } from 'lucide-react'
+import { CheckSquare, Clipboard, Eye, RefreshCw, RotateCcw, Square } from 'lucide-react'
 import { useState, type ChangeEvent } from 'react'
 import { api, messageFromError, type LocalHistoryRecord } from '../api'
 import { DownloaderSendButton } from '../components/DownloaderSendButton'
 import { HistoryDetailDrawer } from '../components/HistoryDetailDrawer'
-import { Button, EmptyState, Field, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
+import { Button, CopyButton, EmptyState, Field, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
 import { formatBytes, formatDateTime } from '../lib/format'
 import { downloadableFromHistoryRecord } from '../lib/history'
 import {
@@ -16,10 +16,6 @@ import {
   type DownloaderConfig,
 } from '../lib/downloaders'
 import { errorAtom, pushNotificationAtom } from '../state'
-
-const copyText = async (value: string) => {
-  await navigator.clipboard.writeText(value)
-}
 
 export function HistoryPage() {
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null)
@@ -34,6 +30,7 @@ export function HistoryPage() {
   })
   const setError = useSetAtom(errorAtom)
   const pushNotification = useSetAtom(pushNotificationAtom)
+  const notifyCopyFailed = () => pushNotification({ variant: 'error', message: '复制失败，请手动复制内容。' })
   const settingsQuery = api.api.settings.$get.useQuery()
   const settingsMutation = api.api.settings.$put.useMutation()
   const historyQuery = api.api.local.history.$get.useQuery({
@@ -251,10 +248,7 @@ export function HistoryPage() {
                       <div className="flex flex-wrap gap-2">
                         {record.resultUrl ? (
                           <>
-                            <Button onClick={() => copyText(record.resultUrl ?? '')} size="sm" variant="secondary">
-                              <Copy className="size-4" />
-                              复制链接
-                            </Button>
+                            <CopyButton value={record.resultUrl} label="复制链接" onCopyFailed={notifyCopyFailed} size="sm" />
                             {downloadable ? (
                               <DownloaderSendButton
                                 downloaders={downloaders}
@@ -267,10 +261,7 @@ export function HistoryPage() {
                           </>
                         ) : null}
                         {record.resultUa ? (
-                          <Button onClick={() => copyText(record.resultUa ?? '')} size="sm" variant="secondary">
-                            <Clipboard className="size-4" />
-                            复制 UA
-                          </Button>
+                          <CopyButton value={record.resultUa} icon={<Clipboard className="size-4" />} label="复制 UA" onCopyFailed={notifyCopyFailed} size="sm" />
                         ) : null}
                         <Button onClick={() => setSelectedRecordId(record.id)} size="sm" variant="secondary">
                           <Eye className="size-4" />
@@ -312,6 +303,7 @@ export function HistoryPage() {
         loading={detailQuery.isFetching}
         open={selectedRecordId !== null}
         onClose={() => setSelectedRecordId(null)}
+        onNotify={pushNotification}
         onReparse={reparse}
         downloaders={downloaders}
         reparsePending={reparseMutation.isPending}

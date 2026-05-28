@@ -39,7 +39,7 @@ import {
   listBrokerRuns,
   updateBrokerConfig,
 } from '../broker/runtime'
-import { badRequest, notFound, unauthorized } from '../lib/errors'
+import { badRequest, notFound, unauthorized, unknownErrorMessage } from '../lib/errors'
 import { BaiduClient } from '../baidu/client'
 import {
   acceptRiskConsent,
@@ -567,7 +567,7 @@ export const typedRoutes = new Hono<AgentEnv>()
       return c.json({ code: 'OK', data: { ...data, record_id: Number(recordId) } })
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'DISK_RESOLVE_FAILED'
-      const message = error instanceof Error ? error.message : String(error)
+      const message = unknownErrorMessage(error)
       db.insert(parseRecords)
         .values({
           userId: user.id,

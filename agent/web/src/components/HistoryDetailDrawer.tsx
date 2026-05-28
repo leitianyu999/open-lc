@@ -2,6 +2,7 @@ import { Loader2, X } from 'lucide-react'
 import type { LocalHistoryDetail, LocalHistoryRecord } from '../api'
 import type { DownloadableItem, DownloaderConfig } from '../lib/downloaders'
 import { downloadableFromHistoryRecord } from '../lib/history'
+import type { NotificationInput } from '../state'
 import { HistoryDetailContent } from './HistoryDetailContent'
 import { EmptyState, MiddleEllipsis } from './ui'
 
@@ -15,6 +16,7 @@ export function HistoryDetailDrawer({
   onClose,
   onReparse,
   onSend,
+  onNotify,
 }: {
   detail?: LocalHistoryDetail
   downloaders: DownloaderConfig[]
@@ -25,6 +27,7 @@ export function HistoryDetailDrawer({
   onClose: () => void
   onReparse: (record: LocalHistoryRecord) => void
   onSend: (downloader: DownloaderConfig, items: DownloadableItem[]) => void
+  onNotify?: (input: NotificationInput) => void
 }) {
   const record = detail?.record
   const downloadable = record ? downloadableFromHistoryRecord(record) : null
@@ -66,6 +69,7 @@ export function HistoryDetailDrawer({
               downloadable={downloadable}
               onReparse={onReparse}
               onSend={onSend}
+              onNotify={onNotify}
               reparsePending={reparsePending}
               sending={sending}
             />

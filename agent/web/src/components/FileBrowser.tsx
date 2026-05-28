@@ -828,12 +828,21 @@ export function ParserWorkspace() {
             <div className="font-bold">合规提示</div>
             <div>请仅填写通过合法合规渠道取得、且你有权用于读取该分享目录的 Cookie。不要填写他人账号、来源不明账号或未经授权的 Cookie。</div>
           </div>
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
-            <div className="font-bold">风险提示</div>
-            <div>下面展示的示例 Cookie 来自公开网络，来源无法核验，可能带来合规风险。强烈建议不要使用它。</div>
-          </div>
           <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-sm font-semibold text-slate-700">来源未知的内置示例 Cookie</div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-slate-700">来源未知的内置示例 Cookie</div>
+              <Button
+                disabled={shareCookieTemplateQuery.isPending || !fakeCookieTemplate}
+                onClick={() => {
+                  setCookieDraft(fakeCookieTemplate)
+                  if (cookieDraftError) setCookieDraftError(null)
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                一键填充
+              </Button>
+            </div>
             <Textarea
               className="min-h-16 w-full min-w-0 resize-y font-mono text-xs text-slate-600"
               readOnly

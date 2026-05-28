@@ -13,7 +13,7 @@ import {
   type ParseRecord,
   type User,
 } from '../db/schema'
-import { badRequest, forbidden, notFound, upstreamError } from '../lib/errors'
+import { badRequest, forbidden, notFound, upstreamError, unknownErrorMessage } from '../lib/errors'
 import { createProxiedDownloadUrl } from '../lib/linkProxy'
 import { getAccountPolicy, getBaiduSettings, getDownloadSettings, getParseLimits } from '../settings/service'
 import {
@@ -403,7 +403,7 @@ const appErrorInfo = (error: unknown) => {
     const message = 'message' in error && typeof error.message === 'string' ? error.message : null
     if (code || message) return { code: code ?? 'UNKNOWN', message: message ?? code ?? '未知错误' }
   }
-  const appError = error instanceof Error ? error : new Error(String(error))
+  const appError = error instanceof Error ? error : new Error(unknownErrorMessage(error))
   const code = 'code' in appError && typeof appError.code === 'string' ? appError.code : 'UNKNOWN'
   return { code, message: appError.message }
 }
@@ -1933,7 +1933,7 @@ export const reparseHistory = async (id: number, user?: User) => {
       return insertDiskReparseJob({ user, record, account, path, result, startedAt })
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'DISK_REPARSE_FAILED'
-      const message = error instanceof Error ? error.message : String(error)
+      const message = unknownErrorMessage(error)
       const details = {
         accountId: account.id,
         credentialSource: account.credentialSource,

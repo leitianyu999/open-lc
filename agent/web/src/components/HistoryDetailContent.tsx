@@ -1,17 +1,14 @@
-import { Clipboard, Copy, RotateCcw } from 'lucide-react'
+import { Clipboard, RotateCcw } from 'lucide-react'
 import { DownloaderSendButton } from './DownloaderSendButton'
-import { Button, EmptyState, MiddleEllipsis, StatusBadge } from './ui'
+import { Button, CopyButton, EmptyState, MiddleEllipsis, StatusBadge } from './ui'
 import { formatBytes, formatDateTime } from '../lib/format'
 import type { LocalHistoryDetail, LocalHistoryRecord } from '../api'
 import type { DownloadableItem, DownloaderConfig } from '../lib/downloaders'
+import type { NotificationInput } from '../state'
 
 const formatDetails = (value: unknown) => {
   if (typeof value === 'string') return value
   return JSON.stringify(value, null, 2)
-}
-
-const copyText = async (value: string) => {
-  await navigator.clipboard.writeText(value)
 }
 
 export function HistoryDetailContent({
@@ -22,6 +19,7 @@ export function HistoryDetailContent({
   sending,
   onReparse,
   onSend,
+  onNotify,
 }: {
   detail?: LocalHistoryDetail
   downloaders: DownloaderConfig[]
@@ -30,9 +28,11 @@ export function HistoryDetailContent({
   sending: boolean
   onReparse: (record: LocalHistoryRecord) => void
   onSend: (downloader: DownloaderConfig, items: DownloadableItem[]) => void
+  onNotify?: (input: NotificationInput) => void
 }) {
   const record = detail?.record
   if (!detail || !record) return <EmptyState title="没有详情数据" />
+  const notifyCopyFailed = () => onNotify?.({ variant: 'error', message: '复制失败，请手动复制内容。' })
 
   return (
     <div className="grid gap-5">
@@ -54,18 +54,12 @@ export function HistoryDetailContent({
       <section className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
         {record.resultUrl ? (
           <>
-            <Button onClick={() => copyText(record.resultUrl ?? '')} size="sm" variant="secondary">
-              <Copy className="size-4" />
-              复制链接
-            </Button>
+            <CopyButton value={record.resultUrl} label="复制链接" onCopyFailed={notifyCopyFailed} size="sm" />
             {downloadable ? <DownloaderSendButton downloaders={downloaders} items={[downloadable]} menu={false} pending={sending} onSend={onSend} /> : null}
           </>
         ) : null}
         {record.resultUa ? (
-          <Button onClick={() => copyText(record.resultUa ?? '')} size="sm" variant="secondary">
-            <Clipboard className="size-4" />
-            复制 UA
-          </Button>
+          <CopyButton value={record.resultUa} icon={<Clipboard className="size-4" />} label="复制 UA" onCopyFailed={notifyCopyFailed} size="sm" />
         ) : null}
         <Button disabled={reparsePending} onClick={() => onReparse(record)} size="sm" variant="ghost">
           <RotateCcw className="size-4" />
