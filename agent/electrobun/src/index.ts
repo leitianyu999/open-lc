@@ -109,7 +109,6 @@ const installApplicationMenu = () => {
 
 const root = appDataRoot()
 const dataDir = join(root, 'data')
-const tempDir = join(root, 'tmp')
 const databaseUrl = join(dataDir, 'agent.sqlite')
 const devWebDist = fileURLToPath(new URL('../../web/dist/', import.meta.url))
 const devMigrationsDir = fileURLToPath(new URL('../../drizzle/', import.meta.url))
@@ -120,7 +119,6 @@ const migrationsDir = fileExists(join(bundledMigrationsDir, 'meta', '_journal.js
 const port = configuredPort()
 
 mkdirSync(dataDir, { recursive: true })
-mkdirSync(tempDir, { recursive: true })
 
 console.log(`[LC Agent Desktop] data dir: ${dataDir}`)
 console.log(`[LC Agent Desktop] web dist: ${webDistRoot}`)
@@ -128,7 +126,6 @@ console.log(`[LC Agent Desktop] migrations: ${migrationsDir}`)
 
 Bun.env.LC_AGENT_PORT = String(port)
 Bun.env.LC_AGENT_DATABASE_URL = databaseUrl
-Bun.env.LC_AGENT_BAIDU_TEMP_DIR = tempDir
 Bun.env.LC_AGENT_WEB_DIST_DIR = webDistRoot
 Bun.env.LC_AGENT_MIGRATIONS_DIR = migrationsDir
 Bun.env.LC_AGENT_NODE_ENV = Bun.env.LC_AGENT_NODE_ENV || 'production'

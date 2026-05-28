@@ -101,7 +101,7 @@ Common runtime paths:
 - Database: `LC_AGENT_DATABASE_URL`
 - Web console build: `LC_AGENT_WEB_DIST_DIR`
 - Database migrations: `LC_AGENT_MIGRATIONS_DIR`
-- Temporary files are managed by the local Agent runtime.
+- Net-disk transfer temporary root: `LC_AGENT_BAIDU_TEMP_DIR` (default: `/我的资源/下载`)
 
 Do not commit real cookies, generated direct links, local SQLite files, or local environment files.
 

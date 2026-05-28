@@ -83,7 +83,7 @@ export const config: AppConfig = {
   baiduFakeWebUA: stringFromEnv('BAIDU_FAKE_WEB_UA', defaultFakeWebUA),
   baiduFakeWxUA: stringFromEnv('BAIDU_FAKE_WX_UA', defaultFakeWxUA),
   baiduFakeCookie: stringFromEnv('BAIDU_FAKE_COOKIE', defaultFakeCookie),
-  tempDir: stringFromEnv('BAIDU_TEMP_DIR', '/lc-parser'),
+  tempDir: stringFromEnv('BAIDU_TEMP_DIR', '/我的资源/下载'),
   parseConcurrency: Math.max(1, numberFromEnv('PARSE_CONCURRENCY', 1)),
   maxFilesPerRequest: Math.max(1, numberFromEnv('MAX_FILES_PER_REQUEST', 5)),
   maxTotalSizeBytes: numberFromEnv('MAX_TOTAL_SIZE_BYTES', 0),

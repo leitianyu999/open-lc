@@ -25,8 +25,7 @@ ENV NODE_ENV=production \
   LC_AGENT_PORT=3100 \
   LC_AGENT_WEB_DIST_DIR=/app/agent/web/dist \
   LC_AGENT_MIGRATIONS_DIR=/app/agent/drizzle \
-  LC_AGENT_DATABASE_URL=/data/agent.sqlite \
-  LC_AGENT_BAIDU_TEMP_DIR=/tmp/lc-agent
+  LC_AGENT_DATABASE_URL=/data/agent.sqlite
 
 COPY --from=build /app/package.json /app/tsconfig.json /app/tsconfig.base.json ./
 COPY --from=build /app/node_modules node_modules
@@ -35,7 +34,7 @@ COPY --from=build /app/agent/web/dist agent/web/dist
 COPY --from=build /app/agent/drizzle agent/drizzle
 COPY --from=build /app/agent/drizzle.config.ts agent/drizzle.config.ts
 
-RUN mkdir -p /data /tmp/lc-agent
+RUN mkdir -p /data
 
 EXPOSE 3100
 CMD ["bun", "run", "agent/api/src/index.ts"]

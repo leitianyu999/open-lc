@@ -271,9 +271,9 @@ const definitions = {
   tempDir: {
     key: 'baidu_temp_dir',
     group: 'baidu',
-    label: 'Baidu 临时目录',
+    label: '网盘临时目录',
     type: 'string',
-    defaultValue: '/lc-parser',
+    defaultValue: '/我的资源/下载',
     envName: agentEnvName('BAIDU_TEMP_DIR'),
     envValue: hasAgentEnv('BAIDU_TEMP_DIR') ? config.tempDir : undefined,
   },

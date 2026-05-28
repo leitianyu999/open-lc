@@ -413,10 +413,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const tempRoot = () => {
   const tempDir = getBaiduSettings().tempDir
   const root = tempDir.startsWith('/') ? tempDir : `/${tempDir}`
-  return root.replace(/\/+$/, '') || '/LCParserTemp'
+  return root.replace(/\/+$/, '') || '/我的资源/下载'
 }
 
-const tempDirFor = (jobId: number) => `${tempRoot()}/record-${jobId}-${crypto.randomUUID().slice(0, 8)}`
+const tempDirFor = (jobId: number) => `${tempRoot()}/${Date.now()}-${jobId}`
 
 const parentDirsFor = (path: string) => {
   const parts = path.split('/').filter(Boolean)
