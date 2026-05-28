@@ -7,6 +7,7 @@ export type DownloaderConfig = {
   rpcUrl: string
   token: string
   downloadDir: string
+  preserveSourceDir: boolean
   enabled: boolean
   isDefault: boolean
 }
@@ -15,6 +16,7 @@ export type DownloadableItem = {
   id: string
   filename: string
   url: string
+  sourceDir?: string | null
   ua?: string | null
 }
 
@@ -35,6 +37,7 @@ export const defaultDownloaderForType = (type: DownloaderType): DownloaderConfig
   rpcUrl: type === 'motrix' ? motrixDefaultRpcUrl : aria2DefaultRpcUrl,
   token: '',
   downloadDir: '',
+  preserveSourceDir: false,
   enabled: true,
   isDefault: false,
 })
@@ -60,6 +63,7 @@ const normalizeDownloader = (value: unknown, index: number): DownloaderConfig | 
     rpcUrl,
     token: stringOr(value.token).trim(),
     downloadDir: stringOr(value.downloadDir).trim(),
+    preserveSourceDir: boolOr(value.preserveSourceDir),
     enabled: boolOr(value.enabled, true),
     isDefault: boolOr(value.isDefault),
   }
@@ -95,6 +99,7 @@ export const serializeDownloaders = (downloaders: DownloaderConfig[]) =>
       rpcUrl: item.rpcUrl.trim(),
       token: item.token.trim(),
       downloadDir: item.downloadDir.trim(),
+      preserveSourceDir: item.preserveSourceDir,
       enabled: item.enabled,
       isDefault: item.isDefault,
     })),
@@ -116,11 +121,45 @@ const aria2ErrorMessage = (value: unknown) => {
   return '下载器返回错误'
 }
 
-export const sendToDownloader = async (downloader: DownloaderConfig, item: DownloadableItem): Promise<string> => {
-  const options: Record<string, unknown> = {
-    out: item.filename,
+const normalizePathSeparators = (value: string) => value.replace(/\\/g, '/')
+
+const stripTrailingSlashes = (value: string) => {
+  if (/^[A-Za-z]:\/?$/.test(value)) return value
+  if (value === '/') return value
+  return value.replace(/\/+$/g, '')
+}
+
+export const safeRelativeSourceDir = (sourceDir?: string | null) => {
+  const segments = normalizePathSeparators(sourceDir ?? '')
+    .split('/')
+    .map((item) => item.trim())
+    .filter((item) => item && item !== '.' && item !== '..')
+  return segments.join('/')
+}
+
+export const downloaderTargetDir = (downloader: Pick<DownloaderConfig, 'downloadDir' | 'preserveSourceDir'>, item: Pick<DownloadableItem, 'sourceDir'>) => {
+  const base = stripTrailingSlashes(normalizePathSeparators(downloader.downloadDir.trim()))
+  const relative = downloader.preserveSourceDir ? safeRelativeSourceDir(item.sourceDir) : ''
+  if (!base) return ''
+  if (!relative) return base
+  return `${base}/${relative}`
+}
+
+export const downloaderRequestOptions = (downloader: Pick<DownloaderConfig, 'downloadDir' | 'preserveSourceDir'>, item: Pick<DownloadableItem, 'filename' | 'sourceDir'>) => {
+  const targetDir = downloaderTargetDir(downloader, item)
+  const relative = downloader.preserveSourceDir && !targetDir ? safeRelativeSourceDir(item.sourceDir) : ''
+  return {
+    dir: targetDir,
+    out: relative ? `${relative}/${item.filename}` : item.filename,
   }
-  if (downloader.downloadDir) options.dir = downloader.downloadDir
+}
+
+export const sendToDownloader = async (downloader: DownloaderConfig, item: DownloadableItem): Promise<string> => {
+  const requestOptions = downloaderRequestOptions(downloader, item)
+  const options: Record<string, unknown> = {
+    out: requestOptions.out,
+  }
+  if (requestOptions.dir) options.dir = requestOptions.dir
   if (item.ua) options.header = [`User-Agent: ${item.ua}`]
 
   const params: unknown[] = [[item.url], options]

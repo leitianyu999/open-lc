@@ -703,6 +703,18 @@ function DownloadersSection({
                   />
                 </label>
               </div>
+              <label className="flex items-start gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200">
+                <input
+                  checked={downloader.preserveSourceDir}
+                  className="mt-1 size-4 rounded border-slate-300 text-blue-600"
+                  disabled={pending}
+                  onChange={(event) => updateDownloader(downloader.id, { preserveSourceDir: event.target.checked })}
+                  type="checkbox"
+                />
+                <span className="grid gap-1">
+                  <span className="font-semibold text-slate-900">保留来源目录结构</span>
+                </span>
+              </label>
               <div className="flex flex-wrap gap-2">
                 <Button
                   disabled={pending}

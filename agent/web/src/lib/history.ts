@@ -7,6 +7,7 @@ export const downloadableFromHistoryRecord = (record: LocalHistoryRecord): Downl
     id: String(record.id),
     filename: record.filename,
     url: record.resultUrl,
+    sourceDir: record.dir,
     ua: record.resultUa,
   }
 }
