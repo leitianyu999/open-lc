@@ -10,7 +10,7 @@ scripts/worker.js -> worker/src/index.js
 
 ## Deploy
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc&dir=worker)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker)
 
 After deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard. Otherwise, the Worker cannot decrypt generated links.
 

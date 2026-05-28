@@ -109,7 +109,7 @@ Do not commit real cookies, generated direct links, local SQLite files, or local
 
 The optional download proxy Worker lives in `worker/` as an independent Cloudflare Worker project.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc&dir=worker)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker)
 
 After deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard. Otherwise, the Worker cannot decrypt generated links.
 

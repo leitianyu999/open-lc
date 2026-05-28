@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "open-lc-worker",
+  "name": "my-open-lc-worker",
   "main": "src/index.js",
-  "compatibility_date": "2026-05-28"
+  "compatibility_date": "2026-05-28",
+  "vars": {
+    "URL_ENCRYPTION_KEY": "changeme"
+  }
 }

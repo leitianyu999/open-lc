@@ -37,7 +37,7 @@ type PendingRiskConsent = {
 } | null
 type WorkerHelpTab = 'worker' | 'encrypt'
 
-const workerDeployUrl = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc&dir=worker'
+const workerDeployUrl = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const desktopSwitchTimeoutMs = 15_000
 const desktopSwitchPollMs = 350
@@ -1108,11 +1108,16 @@ export function SettingsPage() {
 
   const saveSetting = async (setting: AgentSetting) => {
     setError(null)
+    const value = form[setting.name] ?? ''
+    if (setting.name === 'linkProxySecret' && value.trim() === 'changeme') {
+      setError('Worker 加密密钥不能使用示例值 changeme，请换成自己的密钥。')
+      return
+    }
     try {
       await agentSettingsMutation.mutateAsync({
         json: {
           values: {
-            [setting.name]: form[setting.name] ?? '',
+            [setting.name]: value,
           },
         },
       })

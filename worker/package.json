@@ -1,5 +1,5 @@
 {
-  "name": "open-lc-worker-deploy",
+  "name": "my-open-lc-worker-deploy",
   "private": true,
   "type": "module",
   "scripts": {
