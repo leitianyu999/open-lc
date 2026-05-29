@@ -154,6 +154,26 @@ const definitions = {
     envValue: config.linkProxyBaseUrl,
     allowEmpty: true,
   },
+  linkProxyVersion: {
+    key: 'link_proxy_version',
+    group: 'download',
+    label: 'Worker 加密方式',
+    type: 'string',
+    defaultValue: 'v1',
+    envName: agentEnvName('LINK_PROXY_VERSION'),
+    envValue: config.linkProxyVersion,
+    allowEmpty: true,
+  },
+  linkProxyV2Endpoints: {
+    key: 'link_proxy_v2_endpoints',
+    group: 'download',
+    label: 'Worker v2 端点',
+    type: 'string',
+    defaultValue: '',
+    envName: agentEnvName('LINK_PROXY_V2_ENDPOINTS'),
+    envValue: config.linkProxyV2Endpoints,
+    allowEmpty: true,
+  },
   linkProxySecret: {
     key: 'link_proxy_secret',
     group: 'download',
@@ -508,9 +528,38 @@ const normalizeBaseUrl = (value: unknown, label: string) => {
   return url.toString().replace(/\/+$/, '')
 }
 
+const parseEndpointList = (value: unknown) => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  let entries: unknown[]
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 端点列表格式不正确')
+      entries = parsed
+    } catch {
+      throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 端点列表格式不正确')
+    }
+  } else {
+    entries = raw
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  return Array.from(new Set(entries.map((item) => normalizeBaseUrl(item, 'Worker v2 端点')))).join('\n')
+}
+
+const validateLinkProxyVersion = (value: unknown) => {
+  const version = String(value ?? '').trim() || 'v1'
+  if (version !== 'v1' && version !== 'v2') throw badRequest('BAD_LINK_PROXY_VERSION', 'Worker 加密方式只支持 v1 或 v2')
+  return version
+}
+
 const normalizeSettingValue = (definition: SettingDefinition, value: unknown) => {
   if (definition.editable === false) throw badRequest('SETTING_READONLY', `${definition.label}不能在页面中修改`)
   if (value === null || value === undefined || String(value).trim() === '') return ''
+  if (definition.key === settingKeys.linkProxyVersion) return validateLinkProxyVersion(value)
+  if (definition.key === settingKeys.linkProxyV2Endpoints) return parseEndpointList(value)
   if (definition.key === settingKeys.linkProxyBaseUrl || definition.key === settingKeys.brokerBaseUrl) {
     return normalizeBaseUrl(value, definition.label)
   }
@@ -577,11 +626,64 @@ export const setSetting = (name: SettingName, value: unknown) => {
   return normalized
 }
 
-export const setSettings = (values: Record<string, unknown>) => {
+const validateV2PublicKey = (value: string) => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return Buffer.from(padded, 'base64').length === 32
+}
+
+const verifyV2Endpoint = async (endpoint: string) => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
+  try {
+    const response = await fetch(`${endpoint}/lc/v2.auto`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const data = (await response.json()) as { version?: unknown; kid?: unknown; publicKey?: unknown }
+    if (data.version !== 'v2' || data.kid !== 'x1') throw new Error('版本或 key id 不匹配')
+    if (typeof data.publicKey !== 'string' || !validateV2PublicKey(data.publicKey)) throw new Error('publicKey 无效')
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+const validateV2Settings = async (values: Partial<Record<SettingName, string>>) => {
+  const nextVersion = values.linkProxyVersion ?? getSettingWithSource('linkProxyVersion').value
+  if (nextVersion !== 'v2') return
+  const endpointText = values.linkProxyV2Endpoints ?? getSettingWithSource('linkProxyV2Endpoints').value
+  const endpoints = endpointText
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (endpoints.length === 0) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 至少需要填写一个端点')
+  const failures: Array<{ endpoint: string; message: string }> = []
+  for (const endpoint of endpoints) {
+    try {
+      await verifyV2Endpoint(endpoint)
+    } catch (error) {
+      failures.push({ endpoint, message: error instanceof Error && error.message ? error.message : '验证失败' })
+    }
+  }
+  if (failures.length > 0) {
+    throw badRequest('LINK_PROXY_V2_VALIDATE_FAILED', `Worker v2 端点验证失败: ${failures.map((item) => `${item.endpoint} ${item.message}`).join('；')}`, {
+      failures,
+    })
+  }
+}
+
+export const setSettings = async (values: Record<string, unknown>) => {
+  const normalizedValues: Partial<Record<SettingName, string>> = {}
   for (const [inputName, value] of Object.entries(values)) {
     const name = inputName in definitions ? (inputName as SettingName) : definitionEntries.find(([, definition]) => definition.key === inputName)?.[0]
     if (!name) throw badRequest('UNKNOWN_SETTING', `未知设置项: ${inputName}`)
-    setSetting(name, value)
+    normalizedValues[name] = normalizeSettingValue(definitions[name], value)
+  }
+  await validateV2Settings(normalizedValues)
+  for (const [name, value] of Object.entries(normalizedValues) as Array<[SettingName, string]>) {
+    writeSettingRaw(definitions[name].key, value)
   }
   return getSettingsSnapshot()
 }

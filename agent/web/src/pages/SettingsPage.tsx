@@ -111,6 +111,11 @@ const settingsCount = (settings: AgentSettings | undefined, groups: SettingsGrou
   groups.reduce((count, group) => count + (settings?.groups[group]?.length ?? 0), 0)
 
 const visibleSettings = (items: AgentSetting[]) => items.filter((item) => item.name !== 'downloadersJson')
+const visibleDownloadSettings = (items: AgentSetting[], version: string) =>
+  visibleSettings(items).filter((item) => {
+    if (version === 'v2') return item.name !== 'linkProxyBaseUrl' && item.name !== 'linkProxySecret'
+    return item.name !== 'linkProxyV2Endpoints'
+  })
 
 const riskConsentTypeForSettingToggle = (setting: AgentSetting, nextValue: string, consents?: Record<RiskConsentType, boolean>): RiskConsentType | null => {
   if (nextValue !== 'true') return null
@@ -164,6 +169,27 @@ function SettingInput({
         {saving ? <Loader2 className="size-4 animate-spin" /> : null}
         {value === 'true' ? '已开启' : '未开启'}
       </Button>
+    )
+  }
+
+  if (setting.name === 'linkProxyVersion') {
+    return (
+      <select className={settingsInputClassName} disabled={!setting.editable || pending} onChange={(event) => onChange(event.target.value)} value={value || 'v1'}>
+        <option value="v1">v1 共享密钥</option>
+        <option value="v2">v2 公钥发现</option>
+      </select>
+    )
+  }
+
+  if (setting.name === 'linkProxyV2Endpoints') {
+    return (
+      <textarea
+        className={`${settingsInputClassName} min-h-24 resize-y py-2`}
+        disabled={!setting.editable}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="https://dl-a.example.com&#10;https://dl-b.example.com"
+        value={value}
+      />
     )
   }
 
@@ -388,10 +414,8 @@ function WorkerHelpModal({
             <div className="mt-1 leading-6">填写部署后的 Worker 公开地址，用于生成代理下载入口。</div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="font-bold text-slate-900">Worker 加密密钥</div>
-            <div className="mt-1 leading-6">
-              必须和 Worker 环境变量 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code> 保持一致。
-            </div>
+            <div className="font-bold text-slate-900">加密方式</div>
+            <div className="mt-1 leading-6">v1 需要 Agent 和 Worker 共享密钥；v2 只让 Worker 保存密钥，Agent 通过公钥发现生成加密链接。</div>
           </div>
         </div>
         <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -399,8 +423,8 @@ function WorkerHelpModal({
             <div className="font-bold text-slate-900">部署 Worker</div>
             <div className="mt-1 leading-6">
               部署后需要在 Cloudflare Worker 中添加 Secret：
-              <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>
-              ，值需要和本页的 Worker 加密密钥一致。
+              <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。使用 v1
+              时它需要和 Agent 的 Worker 加密密钥一致；使用 v2 时只需要保存在 Worker 侧。
             </div>
             <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 font-mono text-xs leading-5 text-slate-600">
               Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
@@ -1125,12 +1149,19 @@ export function SettingsPage() {
       setError('Worker 加密密钥不能使用示例值 changeme，请换成自己的密钥。')
       return
     }
+    const values: Record<string, string> = {
+      [setting.name]: value,
+    }
+    if (setting.name === 'linkProxyVersion' && value === 'v2') {
+      values.linkProxyV2Endpoints = form.linkProxyV2Endpoints ?? ''
+    }
+    if (setting.name === 'linkProxyV2Endpoints') {
+      values.linkProxyVersion = form.linkProxyVersion || settings?.items.linkProxyVersion?.value || 'v1'
+    }
     try {
       await agentSettingsMutation.mutateAsync({
         json: {
-          values: {
-            [setting.name]: value,
-          },
+          values,
         },
       })
       await agentSettingsQuery.refetch()
@@ -1419,7 +1450,7 @@ export function SettingsPage() {
       <>
         <SettingsSection
           form={form}
-          items={visibleSettings(settings.groups.download)}
+          items={visibleDownloadSettings(settings.groups.download, form.linkProxyVersion || settings.items.linkProxyVersion?.value || 'v1')}
           pending={agentSettingsMutation.isPending}
           savingSettingName={savingSettingName}
           title={groupMeta.download.title}
