@@ -21,6 +21,12 @@ type ApplicationMenuItem =
       type: 'divider' | 'separator'
     }
 
+type WebviewEvent<T = unknown> = {
+  data?: {
+    detail?: T
+  }
+}
+
 const fileExists = (path: string) => existsSync(path)
 
 const appDataRoot = () => {
@@ -68,6 +74,60 @@ const externalUrlsForPort = (port: number) => {
     }
   }
   return Array.from(new Set(urls))
+}
+
+const externalProtocols = new Set(['http:', 'https:', 'mailto:'])
+
+const externalUrlFromEvent = (event: WebviewEvent): string | null => {
+  const detail = event.data?.detail
+  if (!detail) return null
+  if (typeof detail === 'string') {
+    try {
+      const parsed = JSON.parse(detail) as unknown
+      if (parsed && typeof parsed === 'object' && 'url' in parsed && typeof parsed.url === 'string') return parsed.url
+    } catch {
+      return detail
+    }
+    return detail
+  }
+  if (typeof detail === 'object' && 'url' in detail && typeof detail.url === 'string') return detail.url
+  if (typeof detail === 'object' && 'detail' in detail && typeof detail.detail === 'string') return detail.detail
+  return null
+}
+
+const openSafeExternalUrl = (input: string | null, source: string) => {
+  if (!input) return false
+  let url: URL
+  try {
+    url = new URL(input)
+  } catch {
+    console.warn(`[LC Agent Desktop] ignored invalid external URL from ${source}: ${input}`)
+    return false
+  }
+
+  if (!externalProtocols.has(url.protocol)) {
+    console.warn(`[LC Agent Desktop] ignored unsupported external URL from ${source}: ${url.toString()}`)
+    return false
+  }
+
+  const opened = Utils.openExternal(url.toString())
+  if (!opened) {
+    console.error(`[LC Agent Desktop] failed to open external URL from ${source}: ${url.toString()}`)
+    return false
+  }
+  console.log(`[LC Agent Desktop] opened external URL from ${source}: ${url.toString()}`)
+  return true
+}
+
+const isAgentAppUrl = (input: string | null, origin: string) => {
+  if (!input) return false
+  try {
+    const url = new URL(input)
+    const appOrigin = new URL(origin)
+    return url.origin === appOrigin.origin
+  } catch {
+    return false
+  }
 }
 
 const editMenu = (): ApplicationMenuItem => ({
@@ -271,6 +331,20 @@ mainWindow = new BrowserWindow({
     x: 120,
     y: 80,
   },
+})
+
+const mainWebview = mainWindow.webview as unknown as {
+  on: (name: 'new-window-open' | 'will-navigate', handler: (event: WebviewEvent) => void) => void
+}
+
+mainWebview.on('new-window-open', (event) => {
+  openSafeExternalUrl(externalUrlFromEvent(event), 'new-window-open')
+})
+
+mainWebview.on('will-navigate', (event) => {
+  const url = externalUrlFromEvent(event)
+  if (!url || isAgentAppUrl(url, origin)) return
+  openSafeExternalUrl(url, 'will-navigate')
 })
 
 let stopped = false

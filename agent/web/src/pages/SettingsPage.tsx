@@ -11,13 +11,13 @@ import {
   type AgentSettings,
   type DesktopRuntime,
   type RiskConsentType,
+  type WorkerV2VerifyResult,
 } from '../api'
 import { RiskConsentDialog } from '../components/RiskConsentDialog'
 import { Button, ConfirmDialog, CopyButton, MiddleEllipsis, Modal, Panel } from '../components/ui'
 import { defaultDownloaderForType, parseDownloaders, serializeDownloaders, type DownloaderConfig, type DownloaderType } from '../lib/downloaders'
 import { errorAtom, clearParseExecutionAtom, pushNotificationAtom } from '../state'
 import workerSource from '../../../../scripts/worker.js?raw'
-import encryptUrlSource from '../../../../scripts/encrypt-url.js?raw'
 
 type SettingsForm = Record<string, string>
 type SettingsGroupKey = keyof AgentSettings['groups']
@@ -35,9 +35,12 @@ type PendingRiskConsent = {
   type: RiskConsentType
   afterAccept: () => void
 } | null
-type WorkerHelpTab = 'worker' | 'encrypt'
+type WorkerHelpTab = 'quick' | 'manual'
+type WorkerConfigVersion = 'v1' | 'v2'
+type WorkerWizardStep = 'version' | 'form' | 'verify' | 'save'
 
 const workerDeployUrl = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker'
+const workerSourceUrl = 'https://github.com/LeUKi/open-lc/blob/main/worker/src/index.js'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const desktopSwitchTimeoutMs = 15_000
 const desktopSwitchPollMs = 350
@@ -147,13 +150,17 @@ function SettingInput({
   value,
   pending,
   saving,
+  savingValue,
   onChange,
+  onCommit,
 }: {
   setting: AgentSetting
   value: string
   pending: boolean
   saving: boolean
+  savingValue?: string | null
   onChange: (value: string) => void
+  onCommit?: (value: string) => void
 }) {
   if (setting.type === 'boolean') {
     return (
@@ -173,11 +180,33 @@ function SettingInput({
   }
 
   if (setting.name === 'linkProxyVersion') {
+    const currentValue = saving && savingValue ? (savingValue === 'v2' ? 'v2' : 'v1') : value === 'v2' ? 'v2' : 'v1'
+    const options: Array<{ value: WorkerConfigVersion; label: string }> = [
+      { value: 'v1', label: 'v1 共享密钥' },
+      { value: 'v2', label: 'v2 公钥发现' },
+    ]
     return (
-      <select className={settingsInputClassName} disabled={!setting.editable || pending} onChange={(event) => onChange(event.target.value)} value={value || 'v1'}>
-        <option value="v1">v1 共享密钥</option>
-        <option value="v2">v2 公钥发现</option>
-      </select>
+      <div className="inline-flex w-full items-center gap-1 rounded-lg bg-slate-100 p-1 sm:w-auto">
+        {options.map((option) => {
+          const active = currentValue === option.value
+          const optionSaving = saving && savingValue === option.value
+          return (
+            <button
+              aria-pressed={active}
+              className={`inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition sm:flex-none ${
+                active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              } disabled:cursor-not-allowed disabled:opacity-70`}
+              disabled={!setting.editable || pending || active}
+              key={option.value}
+              onClick={() => onCommit?.(option.value)}
+              type="button"
+            >
+              {optionSaving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              <span className="truncate">{option.label}</span>
+            </button>
+          )
+        })}
+      </div>
     )
   }
 
@@ -212,6 +241,7 @@ function SettingRow({
   form,
   pending,
   savingSettingName,
+  savingSettingValue,
   rowAction,
   onChange,
   onReset,
@@ -221,10 +251,11 @@ function SettingRow({
   form: SettingsForm
   pending: boolean
   savingSettingName: string | null
+  savingSettingValue: string | null
   rowAction?: ReactNode
   onChange: (setting: AgentSetting, value: string) => void
   onReset: (setting: AgentSetting) => void
-  onSave: (setting: AgentSetting) => void
+  onSave: (setting: AgentSetting, value?: string) => void
 }) {
   return (
     <div className={settingsRowClassName}>
@@ -252,18 +283,22 @@ function SettingRow({
           setting={setting}
           pending={pending}
           saving={pending && savingSettingName === setting.name}
+          savingValue={savingSettingName === setting.name ? savingSettingValue : null}
           value={setting.editable ? (form[setting.name] ?? '') : setting.value}
           onChange={(value) => onChange(setting, value)}
+          onCommit={(value) => onSave(setting, value)}
         />
         {setting.sensitive ? <div className="mt-1 text-[11px] text-slate-500">当前：{setting.displayValue}</div> : null}
       </div>
       <div className={settingsActionCellClassName}>
         {setting.editable && setting.type !== 'boolean' ? (
           <>
-            <Button className={settingsActionButtonClassName} disabled={pending} onClick={() => onSave(setting)} size="sm">
-              <Save className="size-4" />
-              保存
-            </Button>
+            {setting.name === 'linkProxyVersion' ? null : (
+              <Button className={settingsActionButtonClassName} disabled={pending} onClick={() => onSave(setting)} size="sm">
+                <Save className="size-4" />
+                保存
+              </Button>
+            )}
             <Button
               className={settingsActionButtonClassName}
               disabled={pending || setting.source !== 'database'}
@@ -299,6 +334,7 @@ function SettingsSection({
   form,
   pending,
   savingSettingName,
+  savingSettingValue,
   collapsed = false,
   collapsible = false,
   onChange,
@@ -312,11 +348,12 @@ function SettingsSection({
   form: SettingsForm
   pending: boolean
   savingSettingName: string | null
+  savingSettingValue: string | null
   collapsed?: boolean
   collapsible?: boolean
   onChange: (setting: AgentSetting, value: string) => void
   onReset: (setting: AgentSetting) => void
-  onSave: (setting: AgentSetting) => void
+  onSave: (setting: AgentSetting, value?: string) => void
   onToggle?: () => void
   rowActionForSetting?: (setting: AgentSetting) => ReactNode
 }) {
@@ -345,6 +382,7 @@ function SettingsSection({
               pending={pending}
               rowAction={rowActionForSetting?.(setting)}
               savingSettingName={savingSettingName}
+              savingSettingValue={savingSettingValue}
               setting={setting}
               onChange={onChange}
               onReset={onReset}
@@ -375,12 +413,334 @@ function WorkerHelpButton({ onClick }: { onClick: () => void }) {
     <button
       className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 hover:text-blue-700"
       onClick={onClick}
-      aria-label="Worker 端点帮助"
+      aria-label="Worker 代理端点帮助"
       type="button"
     >
       <HelpCircle className="size-4" />
       这是什么？
     </button>
+  )
+}
+
+function WorkerWizardButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700"
+      onClick={onClick}
+      aria-label="Worker 配置向导"
+      type="button"
+    >
+      <Plus className="size-4" />
+      配置向导
+    </button>
+  )
+}
+
+const workerWizardSteps: Array<{ key: WorkerWizardStep; label: string }> = [
+  { key: 'version', label: '方式' },
+  { key: 'form', label: '填写' },
+  { key: 'verify', label: '检测' },
+  { key: 'save', label: '保存' },
+]
+
+const normalizeWorkerEndpoint = (value: string) => {
+  const url = new URL(value)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return value.trim()
+  if (url.search || url.hash) return value.trim()
+  return url.toString().replace(/\/+$/, '')
+}
+
+const normalizeEndpointLines = (value: string) => {
+  const endpoints = value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      try {
+        return normalizeWorkerEndpoint(item)
+      } catch {
+        return item
+      }
+    })
+  return Array.from(new Set(endpoints)).join('\n')
+}
+
+function WorkerConfigWizard({
+  open,
+  initialForm,
+  preferredVersion,
+  verifying,
+  saving,
+  verifyResult,
+  error,
+  onClose,
+  onOpenHelp,
+  onVerifyV2,
+  onSave,
+}: {
+  open: boolean
+  initialForm: SettingsForm
+  preferredVersion?: WorkerConfigVersion | null
+  verifying: boolean
+  saving: boolean
+  verifyResult: WorkerV2VerifyResult | null
+  error: string | null
+  onClose: () => void
+  onOpenHelp: () => void
+  onVerifyV2: (endpoints: string) => Promise<void>
+  onSave: (values: Record<string, string>) => Promise<void>
+}) {
+  const [step, setStep] = useState<WorkerWizardStep>('version')
+  const [version, setVersion] = useState<WorkerConfigVersion>('v2')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [secret, setSecret] = useState('')
+  const [v2Endpoints, setV2Endpoints] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+  const currentStepIndex = workerWizardSteps.findIndex((item) => item.key === step)
+  const pending = verifying || saving
+  const normalizedV2Endpoints = normalizeEndpointLines(v2Endpoints)
+  const verifyMatchesCurrentInput = verifyResult?.endpoints.join('\n') === normalizedV2Endpoints
+  const v2Verified = version === 'v2' && verifyResult?.ok === true && verifyMatchesCurrentInput
+
+  useEffect(() => {
+    if (!open) return
+    const currentVersion = initialForm.linkProxyVersion === 'v2' ? 'v2' : 'v1'
+    setStep('version')
+    setVersion(preferredVersion ?? (currentVersion === 'v1' && !initialForm.linkProxyV2Endpoints ? 'v2' : currentVersion))
+    setBaseUrl(initialForm.linkProxyBaseUrl ?? '')
+    setSecret('')
+    setV2Endpoints(initialForm.linkProxyV2Endpoints ?? '')
+    setLocalError(null)
+  }, [initialForm, open, preferredVersion])
+
+  const goNext = () => {
+    setLocalError(null)
+    if (step === 'version') {
+      setStep('form')
+      return
+    }
+    if (step === 'form') {
+      if (version === 'v2' && !normalizedV2Endpoints) {
+        setLocalError('请至少填写一个 Worker v2 代理端点')
+        return
+      }
+      if (version === 'v1' && !baseUrl.trim()) {
+        setLocalError('请填写 Worker 代理端点')
+        return
+      }
+      if (version === 'v1' && !secret.trim()) {
+        setLocalError('请填写 Worker 加密密钥')
+        return
+      }
+      if (version === 'v1' && secret.trim() === 'changeme') {
+        setLocalError('Worker 加密密钥不能使用示例值 changeme，请换成自己的密钥。')
+        return
+      }
+      setStep('verify')
+      return
+    }
+    if (step === 'verify') {
+      if (version === 'v2' && !v2Verified) {
+        setLocalError('请先完成 v2 端点检测')
+        return
+      }
+      setStep('save')
+    }
+  }
+
+  const goBack = () => {
+    setLocalError(null)
+    if (step === 'save') setStep('verify')
+    else if (step === 'verify') setStep('form')
+    else if (step === 'form') setStep('version')
+  }
+
+  const verify = async () => {
+    setLocalError(null)
+    if (version !== 'v2') return
+    if (!normalizedV2Endpoints) {
+      setLocalError('请至少填写一个 Worker v2 代理端点')
+      return
+    }
+    await onVerifyV2(normalizedV2Endpoints)
+  }
+
+  const save = async () => {
+    setLocalError(null)
+    if (version === 'v2') {
+      if (!v2Verified) {
+        setLocalError('请先完成 v2 端点检测')
+        return
+      }
+      await onSave({
+        linkProxyVersion: 'v2',
+        linkProxyV2Endpoints: normalizedV2Endpoints,
+      })
+      return
+    }
+    await onSave({
+      linkProxyVersion: 'v1',
+      linkProxyBaseUrl: baseUrl.trim(),
+      linkProxySecret: secret,
+    })
+  }
+
+  const alert = localError || error
+
+  return (
+    <Modal open={open} title="Worker 配置向导" onClose={onClose} maxWidthClassName="max-w-3xl">
+      <div className="grid gap-5">
+        <div className="grid grid-cols-4 items-start gap-1.5">
+          {workerWizardSteps.map((item, index) => {
+            const active = item.key === step
+            const done = index < currentStepIndex
+            return (
+              <div className="relative grid min-w-0 justify-items-center gap-1.5 text-center" key={item.key}>
+                {index > 0 ? <div className={`absolute right-1/2 top-3 h-px w-full ${done || active ? 'bg-emerald-200' : 'bg-slate-200'}`} /> : null}
+                <div
+                  className={`relative z-10 flex size-6 items-center justify-center rounded-full text-xs font-bold ring-1 ${active ? 'bg-blue-600 text-white ring-blue-600' : done ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-white text-slate-400 ring-slate-200'}`}
+                >
+                  {index + 1}
+                </div>
+                <div className={`truncate text-xs font-semibold ${active ? 'text-blue-700' : done ? 'text-emerald-700' : 'text-slate-400'}`}>{item.label}</div>
+              </div>
+            )
+          })}
+        </div>
+
+        {alert ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{alert}</div> : null}
+
+        {step === 'version' ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <button
+              className={`rounded-lg border p-4 text-left transition ${version === 'v2' ? 'border-blue-300 bg-blue-50 text-blue-900 ring-2 ring-blue-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+              onClick={() => setVersion('v2')}
+              type="button"
+            >
+              <div className="text-base font-bold">v2 公钥发现</div>
+              <div className="mt-2 text-sm leading-6">推荐新配置使用。Agent 只保存 Worker 代理端点，通过 /lc/v2.auto 获取公钥，支持多个端点按顺序回退。</div>
+            </button>
+            <button
+              className={`rounded-lg border p-4 text-left transition ${version === 'v1' ? 'border-blue-300 bg-blue-50 text-blue-900 ring-2 ring-blue-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+              onClick={() => setVersion('v1')}
+              type="button"
+            >
+              <div className="text-base font-bold">v1 共享密钥</div>
+              <div className="mt-2 text-sm leading-6">兼容旧配置。Agent 和 Worker 都需要填写同一个 URL_ENCRYPTION_KEY。</div>
+            </button>
+          </div>
+        ) : null}
+
+        {step === 'form' ? (
+          <div className="grid gap-4">
+            {version === 'v2' ? (
+              <div className="grid gap-1.5 text-sm font-semibold text-slate-700">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span>Worker v2 代理端点</span>
+                  <button className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 hover:text-blue-700" onClick={onOpenHelp} type="button">
+                    <HelpCircle className="size-4" />
+                    Worker 代理端点帮助
+                  </button>
+                </div>
+                <textarea
+                  aria-label="Worker v2 代理端点"
+                  className={`${settingsInputClassName} min-h-32 resize-y py-2`}
+                  disabled={pending}
+                  onChange={(event) => setV2Endpoints(event.target.value)}
+                  placeholder="https://dl-a.example.com&#10;https://dl-b.example.com"
+                  value={v2Endpoints}
+                />
+                <p className="text-xs font-medium leading-5 text-slate-500">一行一个端点。</p>
+              </div>
+            ) : (
+              <>
+                <label className="grid gap-1.5 text-sm font-semibold text-slate-700">
+                  Worker 代理端点
+                  <input className={settingsInputClassName} disabled={pending} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://dl.example.com" value={baseUrl} />
+                </label>
+                <label className="grid gap-1.5 text-sm font-semibold text-slate-700">
+                  Worker 加密密钥
+                  <input className={settingsInputClassName} disabled={pending} onChange={(event) => setSecret(event.target.value)} placeholder="与 Worker 的 URL_ENCRYPTION_KEY 一致" type="password" value={secret} />
+                </label>
+              </>
+            )}
+          </div>
+        ) : null}
+
+        {step === 'verify' ? (
+          <div className="grid gap-4">
+            {version === 'v2' ? (
+              <>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+                  点击检测后，本地 Agent 会请求每个端点的 <span className="font-mono text-xs">/lc/v2.auto</span>，确认版本、kid 和 publicKey 可用。
+                </div>
+                <Button disabled={pending || !normalizedV2Endpoints} onClick={verify} type="button" variant="secondary">
+                  {verifying ? <Loader2 className="size-4 animate-spin" /> : null}
+                  检测 v2 端点
+                </Button>
+                {verifyResult && verifyMatchesCurrentInput ? (
+                  <div className="grid gap-2">
+                    {verifyResult.results.map((item) => (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" key={item.endpoint}>
+                        <div className="font-bold break-all">{item.endpoint}</div>
+                        <div className="mt-1 grid gap-1 text-xs font-semibold">
+                          <div>kid: {item.kid}</div>
+                          <div>publicKey: {item.publicKeyPreview}</div>
+                          <div>fingerprint: {item.publicKeyFingerprint}</div>
+                          <div className="break-all">tokenPrefix: {item.tokenPrefix}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {verifyResult.failures.map((item) => (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" key={item.endpoint}>
+                        <div className="font-bold break-all">{item.endpoint}</div>
+                        <div className="mt-1 text-xs font-semibold">{item.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {verifyResult && !verifyMatchesCurrentInput ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">端点内容已修改，请重新检测。</div>
+                ) : null}
+              </>
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+                v1 不做强检测。请确认 Worker 代理端点已部署，且 Agent 填写的密钥与 Worker 的 URL_ENCRYPTION_KEY 一致。
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {step === 'save' ? (
+          <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <div className="font-bold text-slate-900">即将保存</div>
+            <div>加密方式：{version === 'v2' ? 'v2 公钥发现' : 'v1 共享密钥'}</div>
+            {version === 'v2' ? <div className="whitespace-pre-wrap break-all">Worker v2 代理端点：{normalizedV2Endpoints}</div> : <div className="break-all">Worker 代理端点：{baseUrl.trim()}</div>}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+          <Button disabled={pending} onClick={onClose} type="button" variant="secondary">
+            取消
+          </Button>
+          {step !== 'version' ? (
+            <Button disabled={pending} onClick={goBack} type="button" variant="secondary">
+              上一步
+            </Button>
+          ) : null}
+          {step === 'save' ? (
+            <Button disabled={pending} onClick={save} type="button">
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              保存配置
+            </Button>
+          ) : (
+            <Button disabled={pending} onClick={goNext} type="button">
+              下一步
+            </Button>
+          )}
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -395,57 +755,35 @@ function WorkerHelpModal({
   onTabChange: (tab: WorkerHelpTab) => void
   onClose: () => void
 }) {
-  const tabs: Array<{ key: WorkerHelpTab; label: string; filename: string; source: string }> = [
-    { key: 'worker', label: 'Worker 代理脚本', filename: 'scripts/worker.js', source: workerSource },
-    { key: 'encrypt', label: '本地加密示例', filename: 'scripts/encrypt-url.js', source: encryptUrlSource },
+  const tabs: Array<{ key: WorkerHelpTab; label: string }> = [
+    { key: 'quick', label: '一键部署' },
+    { key: 'manual', label: '手动部署' },
   ]
-  const current = tabs.find((tab) => tab.key === activeTab) ?? tabs[0]
+  const current = tabs.some((tab) => tab.key === activeTab) ? activeTab : 'quick'
 
   return (
-    <Modal open={open} title="Worker 端点帮助" onClose={onClose} maxWidthClassName="max-w-5xl">
+    <Modal open={open} title="Worker 代理端点帮助" onClose={onClose} maxWidthClassName="max-w-5xl">
       <div className="grid gap-5">
         <div className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-4 text-sm leading-6 text-blue-900">
           <p className="font-semibold">解析出的下载链接可能包含私密令牌。直接暴露真实链接，等同于交出资源访问权，可能带来不必要的损失。</p>
-          <p>Worker 端点用于接收加密后的链接，再由 Worker 解密并代理真实下载链接。这样外部只会看到代理地址，不会直接看到原始直链。</p>
+          <p>Worker 代理端点用于接收加密后的链接，再由 Worker 解密并代理真实下载链接。这样外部只会看到代理地址，不会直接看到原始直链。</p>
         </div>
         <div className="grid gap-3 text-sm text-slate-700 md:grid-cols-2">
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="font-bold text-slate-900">Worker 端点</div>
+            <div className="font-bold text-slate-900">Worker 代理端点</div>
             <div className="mt-1 leading-6">填写部署后的 Worker 公开地址，用于生成代理下载入口。</div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="font-bold text-slate-900">加密方式</div>
-            <div className="mt-1 leading-6">v1 需要 Agent 和 Worker 共享密钥；v2 只让 Worker 保存密钥，Agent 通过公钥发现生成加密链接。</div>
+            <div className="mt-1 leading-6">推荐使用 v2：只填 Worker 地址，不用在 Agent 里保存密钥。旧版 v1 需要在 Agent 和 Worker 填同一个密钥。</div>
           </div>
-        </div>
-        <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-          <div className="min-w-0">
-            <div className="font-bold text-slate-900">部署 Worker</div>
-            <div className="mt-1 leading-6">
-              部署后需要在 Cloudflare Worker 中添加 Secret：
-              <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。使用 v1
-              时它需要和 Agent 的 Worker 加密密钥一致；使用 v2 时只需要保存在 Worker 侧。
-            </div>
-            <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 font-mono text-xs leading-5 text-slate-600">
-              Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
-            </div>
-          </div>
-          <a
-            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-            href={workerDeployUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ExternalLink className="size-4" />
-            一键部署到 Cloudflare
-          </a>
         </div>
         <div className="overflow-hidden rounded-lg border border-slate-200">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex flex-wrap gap-1 rounded-lg bg-slate-200/70 p-1">
               {tabs.map((tab) => (
                 <button
-                  className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${activeTab === tab.key ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${current === tab.key ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                   key={tab.key}
                   onClick={() => onTabChange(tab.key)}
                   type="button"
@@ -454,14 +792,61 @@ function WorkerHelpModal({
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-white px-2 py-1 font-mono text-xs font-semibold text-slate-500 ring-1 ring-slate-200">{current.filename}</span>
-              <CopyButton value={current.source} label="复制脚本" copiedLabel="已复制" size="sm" />
+          </div>
+          <div className="grid gap-4 px-4 py-4 text-sm leading-6 text-slate-700">
+            {current === 'quick' ? (
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="min-w-0">
+                  <div className="font-bold text-slate-900">一键部署到 Cloudflare</div>
+                  <div className="mt-1">点击按钮后按 Cloudflare 页面提示完成授权和部署。部署完成后，在 Worker 的变量与密钥里添加生产 Secret。</div>
+                </div>
+                <a
+                  className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                  href={workerDeployUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink className="size-4" />
+                  一键部署
+                </a>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-bold text-slate-900">手动部署到 Cloudflare Dashboard</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50" href={workerSourceUrl} rel="noreferrer" target="_blank">
+                      <ExternalLink className="size-3.5" />
+                      index.js
+                    </a>
+                    <CopyButton value={workerSource} label="复制脚本" copiedLabel="已复制" size="sm" />
+                  </div>
+                </div>
+                <ol className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <li>1. 打开 Cloudflare Dashboard，进入 Workers & Pages。</li>
+                  <li>2. 创建 Worker，进入编辑器。</li>
+                  <li>3. 打开上方的 index.js 或点击复制脚本，将内容粘贴到 Worker 编辑器并部署。</li>
+                  <li>4. 在 Settings - Variables and Secrets 中添加 Secret：URL_ENCRYPTION_KEY。</li>
+                  <li>5. 回到 Agent，填写部署后的 Worker 地址。</li>
+                </ol>
+              </div>
+            )}
+            <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="font-bold text-slate-900">Secret 与加密方式</div>
+              <div>
+                建议给 Worker 设置 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。使用 v2
+                时，Agent 只填 Worker 地址；使用 v1 时，Agent 还要填写同一个密钥。
+              </div>
+              <div className="rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-slate-600 ring-1 ring-slate-200">
+                Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
+              </div>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
+              v2 验证：访问 <span className="font-mono text-xs">https://your-worker.example.com/lc/v2.auto</span>，应返回{' '}
+              <span className="font-mono text-xs">version: "v2"</span>、<span className="font-mono text-xs">kid: "x1"</span> 和{' '}
+              <span className="font-mono text-xs">publicKey</span>。
             </div>
           </div>
-          <pre className="max-h-[54vh] overflow-auto bg-slate-950 px-4 py-4 text-xs leading-5 text-slate-100">
-            <code>{current.source}</code>
-          </pre>
         </div>
       </div>
     </Modal>
@@ -969,6 +1354,7 @@ export function SettingsPage() {
   const maintenanceSummaryQuery = api.api.maintenance.summary.$get.useQuery()
   const securityMutation = api.api.security.settings.$put.useMutation()
   const agentSettingsMutation = api.api.settings.$put.useMutation()
+  const workerV2VerifyMutation = api.api.settings['link-proxy'].v2.verify.$post.useMutation()
   const desktopAccessMutation = api.api.desktop['external-access'].$put.useMutation()
   const desktopOpenBrowserMutation = api.api.desktop['open-external-browser'].$post.useMutation()
   const maintenanceCleanupMutation = api.api.maintenance.cleanup.$post.useMutation()
@@ -981,6 +1367,7 @@ export function SettingsPage() {
   const [password, setPassword] = useState('')
   const [form, setForm] = useState<SettingsForm>({})
   const [savingSettingName, setSavingSettingName] = useState<string | null>(null)
+  const [savingSettingValue, setSavingSettingValue] = useState<string | null>(null)
   const [settingsQueryErrorDismissed, setSettingsQueryErrorDismissed] = useState(false)
   const [confirmExternalAccess, setConfirmExternalAccess] = useState(false)
   const [maintenanceConfirm, setMaintenanceConfirm] = useState<MaintenanceConfirmTarget>(null)
@@ -989,7 +1376,11 @@ export function SettingsPage() {
   const [downloadersDraft, setDownloadersDraft] = useState<DownloaderDraft[]>([])
   const [pendingRiskConsent, setPendingRiskConsent] = useState<PendingRiskConsent>(null)
   const [workerHelpOpen, setWorkerHelpOpen] = useState(false)
-  const [workerHelpTab, setWorkerHelpTab] = useState<WorkerHelpTab>('worker')
+  const [workerHelpTab, setWorkerHelpTab] = useState<WorkerHelpTab>('quick')
+  const [workerWizardOpen, setWorkerWizardOpen] = useState(false)
+  const [workerWizardPreferredVersion, setWorkerWizardPreferredVersion] = useState<WorkerConfigVersion | null>(null)
+  const [workerWizardError, setWorkerWizardError] = useState<string | null>(null)
+  const [workerV2VerifyResult, setWorkerV2VerifyResult] = useState<WorkerV2VerifyResult | null>(null)
   const passwordEnabled = statusQuery.data?.data.passwordEnabled === true
   const settings = agentSettingsQuery.data?.data
   const desktopRuntime = desktopRuntimeQuery.data?.data
@@ -1113,13 +1504,63 @@ export function SettingsPage() {
   }
 
   const rowActionForSetting = (setting: AgentSetting) => {
-    if (setting.name !== 'linkProxyBaseUrl') return null
-    return <WorkerHelpButton onClick={() => setWorkerHelpOpen(true)} />
+    if (setting.name !== 'linkProxyVersion') return null
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <WorkerHelpButton onClick={() => setWorkerHelpOpen(true)} />
+        <WorkerWizardButton
+          onClick={() => {
+            setWorkerWizardError(null)
+            setWorkerWizardPreferredVersion(null)
+            setWorkerV2VerifyResult(null)
+            setWorkerWizardOpen(true)
+          }}
+        />
+      </span>
+    )
+  }
+
+  const verifyWorkerV2Endpoints = async (endpoints: string) => {
+    setWorkerWizardError(null)
+    setWorkerV2VerifyResult(null)
+    try {
+      const response = await workerV2VerifyMutation.mutateAsync({
+        json: {
+          endpoints,
+        },
+      })
+      setWorkerV2VerifyResult(response.data)
+      if (!response.data.ok) setWorkerWizardError(`检测失败：${response.data.failures.map((item) => `${item.endpoint} ${item.message}`).join('；')}`)
+    } catch (err) {
+      setWorkerWizardError(messageFromError(err, '检测 Worker v2 代理端点失败'))
+    }
+  }
+
+  const saveWorkerWizardSettings = async (values: Record<string, string>) => {
+    setWorkerWizardError(null)
+    try {
+      await agentSettingsMutation.mutateAsync({
+        json: {
+          values,
+        },
+      })
+      const result = await agentSettingsQuery.refetch()
+      setForm(initialFormFromSettings(result.data?.data))
+      setWorkerWizardOpen(false)
+      setWorkerWizardPreferredVersion(null)
+      pushNotification({
+        variant: 'success',
+        message: 'Worker 配置已保存',
+      })
+    } catch (err) {
+      setWorkerWizardError(messageFromError(err, '保存 Worker 配置失败'))
+    }
   }
 
   const saveBooleanSetting = async (setting: AgentSetting, value: string) => {
     setError(null)
     setSavingSettingName(setting.name)
+    setSavingSettingValue(null)
     setForm((current) => ({ ...current, [setting.name]: value }))
     try {
       await agentSettingsMutation.mutateAsync({
@@ -1139,10 +1580,59 @@ export function SettingsPage() {
       await agentSettingsQuery.refetch()
     } finally {
       setSavingSettingName((current) => (current === setting.name ? null : current))
+      setSavingSettingValue(null)
     }
   }
 
-  const saveSetting = async (setting: AgentSetting) => {
+  const openWorkerWizardForV2 = (message?: string) => {
+    setWorkerWizardError(message ?? null)
+    setWorkerWizardPreferredVersion('v2')
+    setWorkerV2VerifyResult(null)
+    setWorkerWizardOpen(true)
+  }
+
+  const saveLinkProxyVersion = async (setting: AgentSetting, value: string) => {
+    const nextValue = value === 'v2' ? 'v2' : 'v1'
+    const currentValue = settings?.items.linkProxyVersion?.value === 'v2' ? 'v2' : 'v1'
+    if (nextValue === currentValue) return
+    setError(null)
+    setSavingSettingName(setting.name)
+    setSavingSettingValue(nextValue)
+    try {
+      const values: Record<string, string> = {
+        linkProxyVersion: nextValue,
+      }
+      if (nextValue === 'v2') values.linkProxyV2Endpoints = form.linkProxyV2Endpoints ?? ''
+      const result = await agentSettingsMutation.mutateAsync({
+        json: {
+          values,
+        },
+      })
+      setForm(initialFormFromSettings(result.data))
+      await agentSettingsQuery.refetch()
+      pushNotification({
+        variant: 'success',
+        message: `${setting.label} 已保存`,
+      })
+    } catch (err) {
+      const message = messageFromError(err, `保存 ${setting.label} 失败`)
+      if (nextValue === 'v2') {
+        await agentSettingsQuery.refetch()
+        openWorkerWizardForV2(message)
+      } else {
+        setError(message)
+      }
+    } finally {
+      setSavingSettingName((current) => (current === setting.name ? null : current))
+      setSavingSettingValue(null)
+    }
+  }
+
+  const saveSetting = async (setting: AgentSetting, overrideValue?: string) => {
+    if (setting.name === 'linkProxyVersion' && overrideValue) {
+      await saveLinkProxyVersion(setting, overrideValue)
+      return
+    }
     setError(null)
     const value = form[setting.name] ?? ''
     if (setting.name === 'linkProxySecret' && value.trim() === 'changeme') {
@@ -1156,7 +1646,7 @@ export function SettingsPage() {
       values.linkProxyV2Endpoints = form.linkProxyV2Endpoints ?? ''
     }
     if (setting.name === 'linkProxyV2Endpoints') {
-      values.linkProxyVersion = form.linkProxyVersion || settings?.items.linkProxyVersion?.value || 'v1'
+      values.linkProxyVersion = value.trim() ? form.linkProxyVersion || settings?.items.linkProxyVersion?.value || 'v1' : 'v1'
     }
     try {
       await agentSettingsMutation.mutateAsync({
@@ -1176,18 +1666,25 @@ export function SettingsPage() {
 
   const resetSetting = async (setting: AgentSetting) => {
     setError(null)
+    const values: Record<string, string> =
+      setting.name === 'linkProxyV2Endpoints'
+        ? {
+            linkProxyVersion: 'v1',
+            linkProxyV2Endpoints: '',
+          }
+        : {
+            [setting.name]: '',
+          }
     try {
       await agentSettingsMutation.mutateAsync({
         json: {
-          values: {
-            [setting.name]: '',
-          },
+          values,
         },
       })
       await agentSettingsQuery.refetch()
       pushNotification({
         variant: 'success',
-        message: `${setting.label} 已回退到环境变量或默认值`,
+        message: setting.name === 'linkProxyV2Endpoints' ? '已回退 Worker v2 代理端点，并切换到 v1' : `${setting.label} 已回退到环境变量或默认值`,
       })
     } catch (err) {
       setError(messageFromError(err, `回退 ${setting.label} 失败`))
@@ -1401,6 +1898,7 @@ export function SettingsPage() {
           items={settings.groups.broker}
           pending={agentSettingsMutation.isPending}
           savingSettingName={savingSettingName}
+          savingSettingValue={savingSettingValue}
           title={groupMeta.broker.title}
           onChange={updateSettingValue}
           onReset={resetSetting}
@@ -1417,6 +1915,7 @@ export function SettingsPage() {
             items={settings.groups.account}
             pending={agentSettingsMutation.isPending}
             savingSettingName={savingSettingName}
+            savingSettingValue={savingSettingValue}
             title={groupMeta.account.title}
             onChange={updateSettingValue}
             onReset={resetSetting}
@@ -1427,6 +1926,7 @@ export function SettingsPage() {
             items={settings.groups.parse}
             pending={agentSettingsMutation.isPending}
             savingSettingName={savingSettingName}
+            savingSettingValue={savingSettingValue}
             title={groupMeta.parse.title}
             onChange={updateSettingValue}
             onReset={resetSetting}
@@ -1437,6 +1937,7 @@ export function SettingsPage() {
             items={settings.groups.health}
             pending={agentSettingsMutation.isPending}
             savingSettingName={savingSettingName}
+            savingSettingValue={savingSettingValue}
             title={groupMeta.health.title}
             onChange={updateSettingValue}
             onReset={resetSetting}
@@ -1453,6 +1954,7 @@ export function SettingsPage() {
           items={visibleDownloadSettings(settings.groups.download, form.linkProxyVersion || settings.items.linkProxyVersion?.value || 'v1')}
           pending={agentSettingsMutation.isPending}
           savingSettingName={savingSettingName}
+          savingSettingValue={savingSettingValue}
           title={groupMeta.download.title}
           onChange={updateSettingValue}
           onReset={resetSetting}
@@ -1467,6 +1969,7 @@ export function SettingsPage() {
           items={settings.groups.baidu}
           pending={agentSettingsMutation.isPending}
           savingSettingName={savingSettingName}
+          savingSettingValue={savingSettingValue}
           title={groupMeta.baidu.title}
           onChange={updateSettingValue}
           onReset={resetSetting}
@@ -1480,6 +1983,7 @@ export function SettingsPage() {
           items={settings.groups.deployment}
           pending={agentSettingsMutation.isPending}
           savingSettingName={savingSettingName}
+          savingSettingValue={savingSettingValue}
           title={groupMeta.deployment.title}
           onChange={updateSettingValue}
           onReset={resetSetting}
@@ -1566,6 +2070,27 @@ export function SettingsPage() {
         onCancel={() => setPendingRiskConsent(null)}
       />
       <WorkerHelpModal activeTab={workerHelpTab} open={workerHelpOpen} onClose={() => setWorkerHelpOpen(false)} onTabChange={setWorkerHelpTab} />
+      <WorkerConfigWizard
+        error={workerWizardError}
+        initialForm={form}
+        open={workerWizardOpen}
+        preferredVersion={workerWizardPreferredVersion}
+        saving={agentSettingsMutation.isPending}
+        verifying={workerV2VerifyMutation.isPending}
+        verifyResult={workerV2VerifyResult}
+        onClose={() => {
+          setWorkerWizardOpen(false)
+          setWorkerWizardPreferredVersion(null)
+        }}
+        onOpenHelp={() => {
+          setWorkerWizardOpen(false)
+          setWorkerWizardPreferredVersion(null)
+          setWorkerHelpTab('quick')
+          setWorkerHelpOpen(true)
+        }}
+        onSave={saveWorkerWizardSettings}
+        onVerifyV2={verifyWorkerV2Endpoints}
+      />
       {desktopSwitchOverlay ? <DesktopSwitchLoading message={desktopSwitchOverlay.message} /> : null}
     </div>
   )

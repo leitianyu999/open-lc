@@ -52,7 +52,7 @@ import {
   verifyAgentPassword,
   type RiskConsentType,
 } from '../security/service'
-import { getBaiduSettings, getDownloadSettings, getSettingsSnapshot, setSettings } from '../settings/service'
+import { getBaiduSettings, getDownloadSettings, getSettingsSnapshot, setSettings, verifyLinkProxyV2Endpoints } from '../settings/service'
 import { getDesktopRuntime, openDesktopExternalBrowser, setDesktopExternalAccess } from '../desktop/runtime'
 import { cleanupRuntimeData, factoryResetAgentData, getMaintenanceSummary } from '../maintenance/service'
 import { getUpdateCheck } from '../update/service'
@@ -83,6 +83,10 @@ const requireLocalUser = (c: Context<AgentEnv>) => {
 }
 
 const emptyJsonSchema = z.object({}).optional()
+
+const linkProxyV2VerifySchema = z.object({
+  endpoints: z.union([z.string(), z.array(z.string())]),
+})
 
 const accountSchema = z.object({
   credentialSource: z.enum(['cookie', 'open_platform']).optional(),
@@ -349,6 +353,11 @@ export const typedRoutes = new Hono<AgentEnv>()
       requireRiskConsent('broker_execution')
     }
     const data = await setSettings(values)
+    return c.json({ code: 'OK', data })
+  })
+  .post('/api/settings/link-proxy/v2/verify', requireAgentPassword, zValidator('json', linkProxyV2VerifySchema), async (c) => {
+    const body = c.req.valid('json')
+    const data = await verifyLinkProxyV2Endpoints(body.endpoints)
     return c.json({ code: 'OK', data })
   })
   .use('/api/maintenance/*', requireAgentPassword)

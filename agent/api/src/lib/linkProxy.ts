@@ -211,7 +211,7 @@ const contentTypeForFilename = (filename?: string | null) => {
   return undefined
 }
 
-export const normalizeWorkerBaseUrl = (value: unknown, label = 'Worker 端点') => {
+export const normalizeWorkerBaseUrl = (value: unknown, label = 'Worker 代理端点') => {
   const raw = String(value ?? '').trim()
   if (!raw) return ''
   let url: URL
@@ -234,7 +234,7 @@ export const parseV2Endpoints = (value: string) => {
       const parsed = JSON.parse(trimmed) as unknown
       values = Array.isArray(parsed) ? parsed : []
     } catch {
-      throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 端点列表格式不正确')
+      throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 代理端点列表格式不正确')
     }
   } else {
     values = trimmed
@@ -243,7 +243,7 @@ export const parseV2Endpoints = (value: string) => {
       .filter(Boolean)
   }
 
-  const endpoints = values.map((item) => normalizeWorkerBaseUrl(item, 'Worker v2 端点'))
+  const endpoints = values.map((item) => normalizeWorkerBaseUrl(item, 'Worker v2 代理端点'))
   return Array.from(new Set(endpoints))
 }
 
@@ -317,7 +317,7 @@ export const discoverV2Endpoint = async (endpoint: string) => {
 }
 
 export const validateV2Endpoints = async (endpoints: string[]) => {
-  if (endpoints.length === 0) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 至少需要填写一个端点')
+  if (endpoints.length === 0) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 至少需要填写一个代理端点')
   const failures: Array<{ endpoint: string; message: string }> = []
   for (const endpoint of endpoints) {
     try {
@@ -327,7 +327,7 @@ export const validateV2Endpoints = async (endpoints: string[]) => {
     }
   }
   if (failures.length > 0) {
-    throw badRequest('LINK_PROXY_V2_VALIDATE_FAILED', `Worker v2 端点验证失败: ${failures.map((item) => `${item.endpoint} ${item.message}`).join('；')}`, {
+    throw badRequest('LINK_PROXY_V2_VALIDATE_FAILED', `Worker v2 代理端点验证失败: ${failures.map((item) => `${item.endpoint} ${item.message}`).join('；')}`, {
       failures,
     })
   }
@@ -375,5 +375,5 @@ export const createProxiedDownloadUrl = async (
     }
   }
 
-  throw unavailable('LINK_PROXY_V2_UNAVAILABLE', 'Worker v2 端点均不可用，无法生成代理下载链接', { failures })
+  throw unavailable('LINK_PROXY_V2_UNAVAILABLE', 'Worker v2 代理端点均不可用，无法生成代理下载链接', { failures })
 }

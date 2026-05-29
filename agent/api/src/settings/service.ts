@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { agentEnvName, config, hasAgentEnv } from '../config'
 import { db } from '../db'
@@ -36,6 +37,15 @@ const definitions = {
     envName: agentEnvName('DESKTOP_EXTERNAL_ACCESS'),
     envValue: hasAgentEnv('DESKTOP_EXTERNAL_ACCESS') ? String(config.desktopExternalAccess) : undefined,
   },
+  brokerEnabled: {
+    key: 'broker_enabled',
+    group: 'broker',
+    label: '启用 Broker 执行',
+    type: 'boolean',
+    defaultValue: String(config.brokerEnabled),
+    envName: agentEnvName('BROKER_ENABLED'),
+    envValue: hasAgentEnv('BROKER_ENABLED') ? String(config.brokerEnabled) : undefined,
+  },
   brokerBaseUrl: {
     key: 'broker_base_url',
     group: 'broker',
@@ -56,15 +66,6 @@ const definitions = {
     envValue: config.brokerAgentToken,
     allowEmpty: true,
     sensitive: true,
-  },
-  brokerEnabled: {
-    key: 'broker_enabled',
-    group: 'broker',
-    label: '启用 Broker 执行',
-    type: 'boolean',
-    defaultValue: String(config.brokerEnabled),
-    envName: agentEnvName('BROKER_ENABLED'),
-    envValue: hasAgentEnv('BROKER_ENABLED') ? String(config.brokerEnabled) : undefined,
   },
   brokerHeartbeatIntervalSeconds: {
     key: 'broker_heartbeat_interval_seconds',
@@ -144,30 +145,30 @@ const definitions = {
     envName: agentEnvName('SHOW_COOKIE_ACCOUNT_ADD_BUTTON'),
     envValue: hasAgentEnv('SHOW_COOKIE_ACCOUNT_ADD_BUTTON') ? String(config.showCookieAccountAddButton) : undefined,
   },
-  linkProxyBaseUrl: {
-    key: 'link_proxy_base_url',
-    group: 'download',
-    label: 'Worker 端点',
-    type: 'string',
-    defaultValue: '',
-    envName: agentEnvName('PUBLIC_BASE_URL'),
-    envValue: config.linkProxyBaseUrl,
-    allowEmpty: true,
-  },
   linkProxyVersion: {
     key: 'link_proxy_version',
     group: 'download',
-    label: 'Worker 加密方式',
+    label: 'Worker 代理加密方式',
     type: 'string',
     defaultValue: 'v1',
     envName: agentEnvName('LINK_PROXY_VERSION'),
     envValue: config.linkProxyVersion,
     allowEmpty: true,
   },
+  linkProxyBaseUrl: {
+    key: 'link_proxy_base_url',
+    group: 'download',
+    label: 'Worker 代理端点',
+    type: 'string',
+    defaultValue: '',
+    envName: agentEnvName('PUBLIC_BASE_URL'),
+    envValue: config.linkProxyBaseUrl,
+    allowEmpty: true,
+  },
   linkProxyV2Endpoints: {
     key: 'link_proxy_v2_endpoints',
     group: 'download',
-    label: 'Worker v2 端点',
+    label: 'Worker v2 代理端点',
     type: 'string',
     defaultValue: '',
     envName: agentEnvName('LINK_PROXY_V2_ENDPOINTS'),
@@ -535,10 +536,10 @@ const parseEndpointList = (value: unknown) => {
   if (raw.startsWith('[')) {
     try {
       const parsed = JSON.parse(raw) as unknown
-      if (!Array.isArray(parsed)) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 端点列表格式不正确')
+      if (!Array.isArray(parsed)) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 代理端点列表格式不正确')
       entries = parsed
     } catch {
-      throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 端点列表格式不正确')
+      throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 代理端点列表格式不正确')
     }
   } else {
     entries = raw
@@ -546,12 +547,12 @@ const parseEndpointList = (value: unknown) => {
       .map((item) => item.trim())
       .filter(Boolean)
   }
-  return Array.from(new Set(entries.map((item) => normalizeBaseUrl(item, 'Worker v2 端点')))).join('\n')
+  return Array.from(new Set(entries.map((item) => normalizeBaseUrl(item, 'Worker v2 代理端点')))).join('\n')
 }
 
 const validateLinkProxyVersion = (value: unknown) => {
   const version = String(value ?? '').trim() || 'v1'
-  if (version !== 'v1' && version !== 'v2') throw badRequest('BAD_LINK_PROXY_VERSION', 'Worker 加密方式只支持 v1 或 v2')
+  if (version !== 'v1' && version !== 'v2') throw badRequest('BAD_LINK_PROXY_VERSION', 'Worker 代理加密方式只支持 v1 或 v2')
   return version
 }
 
@@ -632,6 +633,12 @@ const validateV2PublicKey = (value: string) => {
   return Buffer.from(padded, 'base64').length === 32
 }
 
+const publicKeyFingerprint = (value: string) => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return createHash('sha256').update(Buffer.from(padded, 'base64')).digest('hex').slice(0, 16)
+}
+
 const verifyV2Endpoint = async (endpoint: string) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5000)
@@ -642,11 +649,43 @@ const verifyV2Endpoint = async (endpoint: string) => {
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const data = (await response.json()) as { version?: unknown; kid?: unknown; publicKey?: unknown }
+    const data = (await response.json()) as { version?: unknown; kid?: unknown; publicKey?: unknown; tokenPrefix?: unknown }
     if (data.version !== 'v2' || data.kid !== 'x1') throw new Error('版本或 key id 不匹配')
     if (typeof data.publicKey !== 'string' || !validateV2PublicKey(data.publicKey)) throw new Error('publicKey 无效')
+    return {
+      endpoint,
+      kid: data.kid,
+      publicKey: data.publicKey,
+      publicKeyPreview: `${data.publicKey.slice(0, 12)}...${data.publicKey.slice(-8)}`,
+      publicKeyFingerprint: publicKeyFingerprint(data.publicKey),
+      tokenPrefix: typeof data.tokenPrefix === 'string' && data.tokenPrefix.trim() ? data.tokenPrefix.trim() : `${endpoint}/lc/v2.x1.`,
+    }
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+export const verifyLinkProxyV2Endpoints = async (input: unknown) => {
+  const endpointText = parseEndpointList(Array.isArray(input) ? input.join('\n') : input)
+  const endpoints = endpointText
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (endpoints.length === 0) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 至少需要填写一个代理端点')
+  const results = []
+  const failures: Array<{ endpoint: string; message: string }> = []
+  for (const endpoint of endpoints) {
+    try {
+      results.push(await verifyV2Endpoint(endpoint))
+    } catch (error) {
+      failures.push({ endpoint, message: error instanceof Error && error.message ? error.message : '验证失败' })
+    }
+  }
+  return {
+    ok: failures.length === 0,
+    endpoints,
+    results,
+    failures,
   }
 }
 
@@ -658,7 +697,7 @@ const validateV2Settings = async (values: Partial<Record<SettingName, string>>) 
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean)
-  if (endpoints.length === 0) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 至少需要填写一个端点')
+  if (endpoints.length === 0) throw badRequest('BAD_LINK_PROXY_V2_ENDPOINTS', 'Worker v2 至少需要填写一个代理端点')
   const failures: Array<{ endpoint: string; message: string }> = []
   for (const endpoint of endpoints) {
     try {
@@ -668,7 +707,7 @@ const validateV2Settings = async (values: Partial<Record<SettingName, string>>) 
     }
   }
   if (failures.length > 0) {
-    throw badRequest('LINK_PROXY_V2_VALIDATE_FAILED', `Worker v2 端点验证失败: ${failures.map((item) => `${item.endpoint} ${item.message}`).join('；')}`, {
+    throw badRequest('LINK_PROXY_V2_VALIDATE_FAILED', `Worker v2 代理端点验证失败: ${failures.map((item) => `${item.endpoint} ${item.message}`).join('；')}`, {
       failures,
     })
   }
