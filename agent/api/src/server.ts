@@ -1,9 +1,10 @@
 import { config } from './config'
 import { initDb, sqlite } from './db'
 import { runAccountHealthMaintenance } from './baidu/health'
+import { retryPendingDeletes } from './baidu/service'
 import { createAgentApp, type CreateAgentAppOptions } from './app'
 import { startAgentBrokerRuntime, stopAgentBrokerRuntime } from './http/routes'
-import { getAccountHealthSettings } from './settings/service'
+import { getAccountHealthSettings, getDownloadSettings } from './settings/service'
 
 export type AgentServerOptions = CreateAgentAppOptions & {
   hostname?: string
@@ -24,6 +25,7 @@ export type AgentServerHandle = {
 
 let initialized = false
 let accountHealthTimer: ReturnType<typeof setInterval> | null = null
+let tempCleanupTimer: ReturnType<typeof setInterval> | null = null
 
 export const initAgentRuntime = () => {
   if (initialized) return
@@ -39,10 +41,22 @@ const startAccountHealthMaintenance = () => {
   }, getAccountHealthSettings().accountHealthIntervalSeconds * 1000)
 }
 
+const startTempFileCleanupMaintenance = () => {
+  if (tempCleanupTimer) clearInterval(tempCleanupTimer)
+  void retryPendingDeletes()
+  tempCleanupTimer = setInterval(() => {
+    void retryPendingDeletes()
+  }, getDownloadSettings().tempCleanupIntervalSeconds * 1000)
+}
+
 export const stopAgentRuntime = () => {
   if (accountHealthTimer) {
     clearInterval(accountHealthTimer)
     accountHealthTimer = null
+  }
+  if (tempCleanupTimer) {
+    clearInterval(tempCleanupTimer)
+    tempCleanupTimer = null
   }
   stopAgentBrokerRuntime()
 }
@@ -55,6 +69,7 @@ export const startAgentServer = (options: AgentServerOptions = {}): AgentServerH
   }
   if (options.startHealthMaintenance !== false) {
     startAccountHealthMaintenance()
+    startTempFileCleanupMaintenance()
   }
 
   const hostname = options.hostname ?? '0.0.0.0'

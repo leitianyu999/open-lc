@@ -45,6 +45,7 @@ function MyAccountsContent() {
   } | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [exportTarget, setExportTarget] = useState<LocalAccount | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<LocalAccount | null>(null)
   const [exportResult, setExportResult] = useState<LocalAccountCredentialExport | null>(null)
   const statusMutation = api.api.local.accounts[':id'].status.$patch.useMutation()
   const healthMutation = api.api.local.accounts[':id']['health-check'].$post.useMutation()
@@ -127,6 +128,7 @@ function MyAccountsContent() {
         param: { id: String(account.id) },
       })
       if (selectedAccountId === account.id) setSelectedAccountId(null)
+      setDeleteTarget(null)
       await refresh()
     } catch (error) {
       setError(messageFromError(error, '删除账号失败'))
@@ -264,7 +266,7 @@ function MyAccountsContent() {
                           <Download className="size-4" />
                           导出凭据
                         </Button>
-                        <Button disabled={deleteMutation.isPending} onClick={() => remove(account)} size="sm" variant="danger">
+                        <Button disabled={deleteMutation.isPending} onClick={() => setDeleteTarget(account)} size="sm" variant="danger">
                           <Trash2 className="size-4" />
                           删除
                         </Button>
@@ -326,6 +328,22 @@ function MyAccountsContent() {
         onCancel={() => setExportTarget(null)}
         onConfirm={() => {
           void exportCredentials()
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="删除账号"
+        description={
+          deleteTarget?.tempFiles?.unresolved
+            ? `该账号还有 ${deleteTarget.tempFiles.unresolved} 条未清理中转文件。删除账号后这些文件可能变成孤儿记录，Agent 将无法继续自动删除，需要你到百度网盘手动清理。`
+            : '将删除该账号及其本地凭据，历史记录会保留。'
+        }
+        confirmLabel="确认删除"
+        disabled={deleteMutation.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) void remove(deleteTarget)
         }}
       />
 

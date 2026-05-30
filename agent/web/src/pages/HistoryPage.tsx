@@ -1,10 +1,11 @@
 import { useSetAtom } from 'jotai'
-import { CheckSquare, Clipboard, Eye, RefreshCw, RotateCcw, Square } from 'lucide-react'
+import { CheckSquare, Clipboard, Eye, RefreshCw, RotateCcw, Square, Trash2 } from 'lucide-react'
 import { useState, type ChangeEvent } from 'react'
-import { api, messageFromError, type LocalHistoryRecord } from '../api'
+import { api, messageFromError, type LocalHistoryRecord, type TempFilesCleanupResult } from '../api'
 import { DownloaderSendButton } from '../components/DownloaderSendButton'
 import { HistoryDetailDrawer } from '../components/HistoryDetailDrawer'
-import { Button, CopyButton, EmptyState, Field, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
+import { TempFileCleanupProgressModal } from '../components/TempFileCleanupProgress'
+import { Button, ConfirmDialog, CopyButton, EmptyState, Field, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
 import { formatBytes, formatDateTime } from '../lib/format'
 import { downloadableFromHistoryRecord } from '../lib/history'
 import {
@@ -21,6 +22,10 @@ export function HistoryPage() {
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null)
   const [selectedDownloadIds, setSelectedDownloadIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
+  const [confirmTempCleanup, setConfirmTempCleanup] = useState(false)
+  const [tempCleanupProgressOpen, setTempCleanupProgressOpen] = useState(false)
+  const [tempCleanupResult, setTempCleanupResult] = useState<TempFilesCleanupResult | null>(null)
+  const [tempCleanupError, setTempCleanupError] = useState<string | null>(null)
   const [filters, setFilters] = useState({
     status: '',
     credentialSource: '',
@@ -44,6 +49,10 @@ export function HistoryPage() {
     },
   })
   const reparseMutation = api.api.local.history[':id'].reparse.$post.useMutation()
+  const tempCleanupMutation = api.api.maintenance['temp-files'].cleanup.$post.useMutation()
+  const tempCleanupStatusQuery = api.api.maintenance['temp-files'].cleanup.status.$get.useQuery({
+    refetchInterval: tempCleanupProgressOpen || tempCleanupMutation.isPending ? 1000 : false,
+  })
   const detailQuery = api.api.local.history[':id'].$get.useQuery({
     param: { id: String(selectedRecordId ?? '') },
     enabled: selectedRecordId !== null,
@@ -131,6 +140,41 @@ export function HistoryPage() {
     }
   }
 
+  const cleanupTempFiles = async () => {
+    setError(null)
+    setTempCleanupError(null)
+    setTempCleanupResult(null)
+    setConfirmTempCleanup(false)
+    setTempCleanupProgressOpen(true)
+    try {
+      const response = await tempCleanupMutation.mutateAsync({ json: {} })
+      const result = response.data
+      setTempCleanupResult(result)
+      const details = [
+        `尝试 ${result.attempted}`,
+        `删除 ${result.deleted}`,
+        result.failed ? `失败 ${result.failed}` : '',
+        result.skipped ? `跳过 ${result.skipped}` : '',
+        result.orphan ? `孤儿 ${result.orphan}` : '',
+        result.waitingForExpiry ? `等待过期 ${result.waitingForExpiry}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      pushNotification({
+        variant: result.failed || result.orphan ? 'warning' : 'success',
+        message: `中转文件清理完成：${details}`,
+      })
+      if (result.firstError) setError(result.firstError)
+      await Promise.all([historyQuery.refetch(), detailQuery.refetch(), tempCleanupStatusQuery.refetch()])
+    } catch (error) {
+      const message = messageFromError(error, '清理中转文件失败')
+      setError(message)
+      setTempCleanupError(message)
+    } finally {
+      setConfirmTempCleanup(false)
+    }
+  }
+
   return (
     <Panel className="grid gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -149,6 +193,10 @@ export function HistoryPage() {
             size="md"
             onSend={(downloader, items) => void sendItems(downloader, items)}
           />
+          <Button disabled={tempCleanupMutation.isPending} onClick={() => setConfirmTempCleanup(true)} variant="secondary">
+            <Trash2 className="size-4" />
+            清理中转文件
+          </Button>
           <Button disabled={historyQuery.isFetching} onClick={() => historyQuery.refetch()} variant="secondary">
             <RefreshCw className={`size-4 ${historyQuery.isFetching ? 'animate-spin' : ''}`} />
             刷新
@@ -309,6 +357,26 @@ export function HistoryPage() {
         reparsePending={reparseMutation.isPending}
         sending={sending}
         onSend={(downloader, items) => void sendItems(downloader, items)}
+      />
+      <ConfirmDialog
+        confirmLabel="开始清理"
+        description="将尝试清理本机 Agent 记录的网盘中转文件。手动清理会重试失败项，但开放平台链接未过期的文件会跳过；账号已删除的孤儿文件只能到百度网盘手动删除。"
+        disabled={tempCleanupMutation.isPending}
+        open={confirmTempCleanup}
+        title="清理中转文件"
+        variant="primary"
+        onCancel={() => setConfirmTempCleanup(false)}
+        onConfirm={() => {
+          void cleanupTempFiles()
+        }}
+      />
+      <TempFileCleanupProgressModal
+        error={tempCleanupError}
+        open={tempCleanupProgressOpen}
+        pending={tempCleanupMutation.isPending}
+        result={tempCleanupResult}
+        status={tempCleanupStatusQuery.data?.data}
+        onClose={() => setTempCleanupProgressOpen(false)}
       />
     </Panel>
   )

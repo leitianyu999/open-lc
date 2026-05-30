@@ -11,11 +11,14 @@ import {
   type AgentSettings,
   type DesktopRuntime,
   type RiskConsentType,
+  type TempFilesCleanupResult,
   type WorkerV2VerifyResult,
 } from '../api'
 import { RiskConsentDialog } from '../components/RiskConsentDialog'
+import { TempFileCleanupProgressModal } from '../components/TempFileCleanupProgress'
 import { Button, ConfirmDialog, CopyButton, MiddleEllipsis, Modal, Panel } from '../components/ui'
 import { defaultDownloaderForType, parseDownloaders, serializeDownloaders, type DownloaderConfig, type DownloaderType } from '../lib/downloaders'
+import { formatDateTime } from '../lib/format'
 import { errorAtom, clearParseExecutionAtom, pushNotificationAtom } from '../state'
 import workerSource from '../../../../scripts/worker.js?raw'
 
@@ -27,7 +30,7 @@ type DesktopSwitchOverlay = {
   targetEnabled: boolean
   message: string
 } | null
-type MaintenanceConfirmTarget = 'cleanup' | 'factory-reset' | null
+type MaintenanceConfirmTarget = 'cleanup' | 'factory-reset' | 'temp-files' | null
 type MaintenanceSummaryResponse = (typeof api.api.maintenance.summary.$get.$infer)['data']
 type MaintenanceSummary = MaintenanceSummaryResponse['data']
 type DownloaderDraft = DownloaderConfig
@@ -798,7 +801,10 @@ function WorkerHelpModal({
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                 <div className="min-w-0">
                   <div className="font-bold text-slate-900">一键部署到 Cloudflare</div>
-                  <div className="mt-1">点击按钮后按 Cloudflare 页面提示完成授权和部署。部署完成后，在 Worker 的变量与密钥里添加生产 Secret。</div>
+                  <div className="mt-1">
+                    点击按钮后按 Cloudflare 页面提示完成授权和部署。部署完成后，在 Worker 的变量与密钥里添加 Secret：
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。
+                  </div>
                 </div>
                 <a
                   className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
@@ -834,9 +840,10 @@ function WorkerHelpModal({
             <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
               <div className="font-bold text-slate-900">Secret 与加密方式</div>
               <div>
-                建议给 Worker 设置 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。使用 v2
+                需要给 Worker 设置 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。使用 v2
                 时，Agent 只填 Worker 地址；使用 v1 时，Agent 还要填写同一个密钥。
               </div>
+              <div>ALLOWED_HOSTS 默认是 *，通常无需配置；如需限制上游域名，可在 Worker Variables 中填写逗号分隔的 host。</div>
               <div className="rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-slate-600 ring-1 ring-slate-200">
                 Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
               </div>
@@ -1164,15 +1171,19 @@ function MaintenanceSection({
   summary,
   loading,
   pending,
+  tempCleanupPending,
   onRefresh,
   onCleanup,
+  onTempCleanup,
   onFactoryReset,
 }: {
   summary?: MaintenanceSummary
   loading: boolean
   pending: boolean
+  tempCleanupPending: boolean
   onRefresh: () => void
   onCleanup: () => void
+  onTempCleanup: () => void
   onFactoryReset: () => void
 }) {
   if (loading) return <LoadingBlock label="正在读取维护状态" />
@@ -1189,6 +1200,7 @@ function MaintenanceSection({
   const factoryCount = summary ? runtimeCount + summary.baiduAccounts + summary.appSettings : runtimeCount
   const activeCount = summary ? summary.activeParseJobs + summary.activeBrokerRuns : 0
   const parseRunning = (summary?.activeParseJobs ?? 0) > 0
+  const tempCleanup = summary?.tempFileCleanup
 
   return (
     <>
@@ -1208,6 +1220,86 @@ function MaintenanceSection({
           <Metric label="恢复出厂项" value={factoryCount} />
           <Metric label="解析运行中" value={summary?.activeParseJobs ?? 0} />
           <Metric label="Broker 运行中" value={summary?.activeBrokerRuns ?? 0} />
+        </div>
+      </section>
+      <section className="border-t border-slate-200">
+        <SectionHeader
+          title="中转文件清理"
+          count={(tempCleanup?.deletePending ?? 0) + (tempCleanup?.deleteFailed ?? 0) + (tempCleanup?.orphan ?? 0)}
+          action={
+            <Button disabled={pending || tempCleanupPending} onClick={onTempCleanup} size="sm" variant="secondary">
+              <Trash2 className="size-4" />
+              手动清理
+            </Button>
+          }
+        />
+        <div className="grid gap-2 px-3 py-3 sm:grid-cols-2 sm:px-4 lg:grid-cols-5">
+          <Metric label="待清理" value={tempCleanup?.deletePending ?? 0} />
+          <Metric label="清理失败" value={tempCleanup?.deleteFailed ?? 0} />
+          <Metric label="孤儿文件" value={tempCleanup?.orphan ?? 0} />
+          <Metric label="活跃记录" value={tempCleanup?.active ?? 0} />
+          <Metric label="已删除" value={tempCleanup?.deleted ?? 0} />
+        </div>
+        <div className="grid gap-3 px-3 pb-3 sm:px-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            {tempCleanup?.lastRun ? (
+              <div>
+                上次{tempCleanup.lastRun.trigger === 'manual' ? '手动' : '自动'}清理：{formatDateTime(tempCleanup.lastRun.finishedAt)} · 尝试{' '}
+                {tempCleanup.lastRun.result.attempted} · 删除 {tempCleanup.lastRun.result.deleted} · 跳过 {tempCleanup.lastRun.result.skipped}
+                {tempCleanup.lastRun.result.failed ? ` · 失败 ${tempCleanup.lastRun.result.failed}` : ''}
+              </div>
+            ) : (
+              <div>暂未记录中转文件清理运行状态。</div>
+            )}
+          </div>
+          {tempCleanup?.recentOrphans.length ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <div className="font-bold">最近孤儿文件</div>
+              <div className="mt-2 grid gap-1">
+                {tempCleanup.recentOrphans.map((item) => (
+                  <div className="break-all" key={item.id}>
+                    #{item.id} · {item.path || item.tempDir}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {tempCleanup?.recentErrors.length ? (
+            <div className="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
+              <div className="font-bold text-slate-900">待处理问题文件</div>
+              <div className="mt-2 grid gap-1">
+                {tempCleanup.recentErrors.map((item) => (
+                  <div className="break-all" key={item.id}>
+                    #{item.id} · {item.status} · 失败 {item.retryCount} 次{item.retryCount > 2 ? ' · 定时清理已跳过' : ''}
+                    {item.retryCount > 5 ? ' · 手动清理也会跳过' : ''} ·{' '}
+                    {item.errorMessage || item.path}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {tempCleanup?.recentRuns.length ? (
+            <div className="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
+              <div className="font-bold text-slate-900">最近运行</div>
+              <div className="mt-2 grid gap-2">
+                {tempCleanup.recentRuns.slice(0, 3).map((run) => (
+                  <div className="rounded-md bg-white px-3 py-2 ring-1 ring-slate-100" key={run.id}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-800">
+                        #{run.id} · {run.trigger === 'manual' ? '手动' : '自动'}清理 · {run.status}
+                      </span>
+                      <span className="text-xs text-slate-500">{formatDateTime(run.finishedAt || run.startedAt)}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      处理 {run.processed}/{run.totalCandidates} · 尝试 {run.result.attempted} · 删除 {run.result.deleted} · 跳过 {run.result.skipped}
+                      {run.result.failed ? ` · 失败 ${run.result.failed}` : ''}
+                    </div>
+                    {run.result.firstError ? <div className="mt-1 break-all text-xs font-semibold text-amber-700">{run.result.firstError}</div> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
       <section className="border-t border-slate-200">
@@ -1348,17 +1440,6 @@ export function SettingsPage() {
   const clearParseExecution = useSetAtom(clearParseExecutionAtom)
   const pushNotification = useSetAtom(pushNotificationAtom)
   const setError = useSetAtom(errorAtom)
-  const statusQuery = api.api.security.status.$get.useQuery()
-  const agentSettingsQuery = api.api.settings.$get.useQuery()
-  const desktopRuntimeQuery = api.api.desktop.runtime.$get.useQuery()
-  const maintenanceSummaryQuery = api.api.maintenance.summary.$get.useQuery()
-  const securityMutation = api.api.security.settings.$put.useMutation()
-  const agentSettingsMutation = api.api.settings.$put.useMutation()
-  const workerV2VerifyMutation = api.api.settings['link-proxy'].v2.verify.$post.useMutation()
-  const desktopAccessMutation = api.api.desktop['external-access'].$put.useMutation()
-  const desktopOpenBrowserMutation = api.api.desktop['open-external-browser'].$post.useMutation()
-  const maintenanceCleanupMutation = api.api.maintenance.cleanup.$post.useMutation()
-  const maintenanceFactoryResetMutation = api.api.maintenance['factory-reset'].$post.useMutation()
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryKey>('security')
   const [advancedOpen, setAdvancedOpen] = useState<Record<AdvancedSectionKey, boolean>>({
     baidu: false,
@@ -1381,12 +1462,29 @@ export function SettingsPage() {
   const [workerWizardPreferredVersion, setWorkerWizardPreferredVersion] = useState<WorkerConfigVersion | null>(null)
   const [workerWizardError, setWorkerWizardError] = useState<string | null>(null)
   const [workerV2VerifyResult, setWorkerV2VerifyResult] = useState<WorkerV2VerifyResult | null>(null)
+  const [tempCleanupResult, setTempCleanupResult] = useState<TempFilesCleanupResult | null>(null)
+  const [tempCleanupError, setTempCleanupError] = useState<string | null>(null)
+  const statusQuery = api.api.security.status.$get.useQuery()
+  const agentSettingsQuery = api.api.settings.$get.useQuery()
+  const desktopRuntimeQuery = api.api.desktop.runtime.$get.useQuery()
+  const maintenanceSummaryQuery = api.api.maintenance.summary.$get.useQuery()
+  const securityMutation = api.api.security.settings.$put.useMutation()
+  const agentSettingsMutation = api.api.settings.$put.useMutation()
+  const workerV2VerifyMutation = api.api.settings['link-proxy'].v2.verify.$post.useMutation()
+  const desktopAccessMutation = api.api.desktop['external-access'].$put.useMutation()
+  const desktopOpenBrowserMutation = api.api.desktop['open-external-browser'].$post.useMutation()
+  const maintenanceCleanupMutation = api.api.maintenance.cleanup.$post.useMutation()
+  const tempFilesCleanupMutation = api.api.maintenance['temp-files'].cleanup.$post.useMutation()
+  const tempCleanupStatusQuery = api.api.maintenance['temp-files'].cleanup.status.$get.useQuery({
+    refetchInterval: maintenanceConfirm === 'temp-files' || tempFilesCleanupMutation.isPending ? 1000 : false,
+  })
+  const maintenanceFactoryResetMutation = api.api.maintenance['factory-reset'].$post.useMutation()
   const passwordEnabled = statusQuery.data?.data.passwordEnabled === true
   const settings = agentSettingsQuery.data?.data
   const desktopRuntime = desktopRuntimeQuery.data?.data
   const desktopMode = desktopRuntime?.desktopMode === true
   const maintenanceSummary = maintenanceSummaryQuery.data?.data
-  const maintenancePending = maintenanceCleanupMutation.isPending || maintenanceFactoryResetMutation.isPending
+  const maintenancePending = maintenanceCleanupMutation.isPending || maintenanceFactoryResetMutation.isPending || tempFilesCleanupMutation.isPending
   const settingsQueryError =
     agentSettingsQuery.isError && !settingsQueryErrorDismissed ? messageFromError(agentSettingsQuery.error, '读取 Agent 配置失败') : null
 
@@ -1826,6 +1924,27 @@ export function SettingsPage() {
     }
   }
 
+  const cleanupTempFiles = async () => {
+    setError(null)
+    setTempCleanupError(null)
+    setTempCleanupResult(null)
+    try {
+      const response = await tempFilesCleanupMutation.mutateAsync({ json: {} })
+      const result = response.data
+      setTempCleanupResult(result)
+      await Promise.all([maintenanceSummaryQuery.refetch(), tempCleanupStatusQuery.refetch()])
+      pushNotification({
+        variant: result.failed || result.orphan ? 'warning' : 'success',
+        message: `中转文件清理完成：尝试 ${result.attempted} · 删除 ${result.deleted} · 跳过 ${result.skipped}${result.failed ? ` · 失败 ${result.failed}` : ''}${result.orphan ? ` · 孤儿 ${result.orphan}` : ''}`,
+      })
+      if (result.firstError) setError(result.firstError)
+    } catch (err) {
+      const message = messageFromError(err, '清理中转文件失败')
+      setError(message)
+      setTempCleanupError(message)
+    }
+  }
+
   const factoryReset = async () => {
     setError(null)
     try {
@@ -1847,8 +1966,10 @@ export function SettingsPage() {
         <MaintenanceSection
           loading={maintenanceSummaryQuery.isLoading}
           pending={maintenancePending}
+          tempCleanupPending={tempFilesCleanupMutation.isPending}
           summary={maintenanceSummary}
           onCleanup={() => setMaintenanceConfirm('cleanup')}
+          onTempCleanup={() => setMaintenanceConfirm('temp-files')}
           onFactoryReset={() => {
             setFactoryResetConfirmText('')
             setMaintenanceConfirm('factory-reset')
@@ -2047,6 +2168,30 @@ export function SettingsPage() {
         onCancel={() => setMaintenanceConfirm(null)}
         onConfirm={() => {
           void cleanupRuntime()
+        }}
+      />
+      <ConfirmDialog
+        confirmLabel="开始清理"
+        description="将尝试删除本机 Agent 记录的网盘中转文件。手动清理会重试失败项；未过期的开放平台中转文件会跳过；孤儿文件需要到百度网盘手动删除。"
+        disabled={maintenancePending}
+        open={maintenanceConfirm === 'temp-files' && !tempFilesCleanupMutation.isPending && !tempCleanupResult && !tempCleanupError}
+        title="清理中转文件"
+        variant="primary"
+        onCancel={() => setMaintenanceConfirm(null)}
+        onConfirm={() => {
+          void cleanupTempFiles()
+        }}
+      />
+      <TempFileCleanupProgressModal
+        error={tempCleanupError}
+        open={maintenanceConfirm === 'temp-files' && (tempFilesCleanupMutation.isPending || Boolean(tempCleanupResult) || Boolean(tempCleanupError))}
+        pending={tempFilesCleanupMutation.isPending}
+        result={tempCleanupResult}
+        status={tempCleanupStatusQuery.data?.data}
+        onClose={() => {
+          setMaintenanceConfirm(null)
+          setTempCleanupResult(null)
+          setTempCleanupError(null)
         }}
       />
       <FactoryResetDialog
