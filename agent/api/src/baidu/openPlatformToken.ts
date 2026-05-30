@@ -1,7 +1,7 @@
 import { desc, eq, lt, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { accountTokenEvents, baiduAccounts, type BaiduAccount } from '../db/schema'
-import { upstreamError } from '../lib/errors'
+import { upstreamError, unknownErrorMessage } from '../lib/errors'
 import { BaiduClient } from './client'
 import { renewOpenPlatformToken } from './openPlatform'
 import { recordAccountStatusEvent } from './accounts'
@@ -31,7 +31,7 @@ const appErrorInfo = (error: unknown) => {
     const message = 'message' in error && typeof error.message === 'string' ? error.message : null
     if (code || message) return { code: code ?? 'UNKNOWN', message: message ?? code ?? '未知错误' }
   }
-  const normalized = error instanceof Error ? error : new Error(String(error))
+  const normalized = error instanceof Error ? error : new Error(unknownErrorMessage(error))
   const code = 'code' in normalized && typeof normalized.code === 'string' ? normalized.code : 'UNKNOWN'
   return { code, message: normalized.message }
 }

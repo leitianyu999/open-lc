@@ -1,16 +1,12 @@
 import { useState } from 'react'
 import { useAtom } from 'jotai'
-import { CheckSquare, Clipboard, Copy, Square, Trash2, X } from 'lucide-react'
+import { CheckSquare, Clipboard, Square, Trash2, X } from 'lucide-react'
 import { executionTabAtom, type NotificationInput, type ParseResult, type QueuedFile } from '../state'
 import { formatBytes } from '../lib/format'
 import { sendManyToDownloader, summarizeSendResults, type DownloadableItem, type DownloaderConfig } from '../lib/downloaders'
 import { usePagination } from '../lib/usePagination'
 import { DownloaderSendButton } from './DownloaderSendButton'
-import { Button, EmptyState, MiddleEllipsis, Pagination, StateIcon, StatusBadge } from './ui'
-
-const copyText = async (value: string) => {
-  await navigator.clipboard.writeText(value)
-}
+import { Button, CopyButton, EmptyState, MiddleEllipsis, Pagination, StateIcon, StatusBadge } from './ui'
 
 const resultDownloadableId = (result: ParseResult, index: number) => String(result.job?.id ?? result.data?.record_id ?? result.fsId ?? index)
 
@@ -235,6 +231,7 @@ function ResultPanel({
       return next
     })
   }
+  const notifyCopyFailed = () => onNotify({ variant: 'error', message: '复制失败，请手动复制内容。' })
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -264,6 +261,7 @@ function ResultPanel({
               result={result}
               selected={selected}
               sending={sending}
+              onCopyFailed={notifyCopyFailed}
               onSend={(downloader, items) => void sendItems(downloader, items)}
               onToggleSelected={toggleSelected}
             />
@@ -281,6 +279,7 @@ function ResultCard({
   result,
   selected,
   sending,
+  onCopyFailed,
   onSend,
   onToggleSelected,
 }: {
@@ -289,6 +288,7 @@ function ResultCard({
   result: ParseResult
   selected: Set<string>
   sending: boolean
+  onCopyFailed: () => void
   onSend: (downloader: DownloaderConfig, items: DownloadableItem[]) => void
   onToggleSelected: (item: DownloadableItem, checked: boolean) => void
 }) {
@@ -327,14 +327,15 @@ function ResultCard({
           </div>
           <div className="break-all rounded-md bg-white px-3 py-2 text-slate-600 ring-1 ring-slate-200">UA: {result.data.ua}</div>
           <div className="flex flex-wrap gap-2">
-            <Button className="min-h-9 px-3 py-1.5" onClick={() => copyText(result.data?.urls[0] ?? '')} variant="secondary">
-              <Copy className="size-4" />
-              复制直链
-            </Button>
-            <Button className="min-h-9 px-3 py-1.5" onClick={() => copyText(result.data?.ua ?? '')} variant="secondary">
-              <Clipboard className="size-4" />
-              复制 UA
-            </Button>
+            <CopyButton className="min-h-9 px-3 py-1.5" value={result.data.urls[0] ?? ''} label="复制直链" onCopyFailed={onCopyFailed} size="md" />
+            <CopyButton
+              className="min-h-9 px-3 py-1.5"
+              value={result.data.ua ?? ''}
+              icon={<Clipboard className="size-4" />}
+              label="复制 UA"
+              onCopyFailed={onCopyFailed}
+              size="md"
+            />
             {item ? <DownloaderSendButton downloaders={downloaders} items={[item]} menu={false} pending={sending} onSend={onSend} /> : null}
           </div>
         </div>

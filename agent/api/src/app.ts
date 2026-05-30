@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { config } from './config'
-import { isAppError } from './lib/errors'
+import { isAppError, unknownErrorMessage } from './lib/errors'
 import { typedRoutes } from './http/routes'
 
 const defaultWebDistRoot = new URL('../../web/dist/', import.meta.url).pathname
@@ -88,7 +88,7 @@ export const createAgentApp = (options: CreateAgentAppOptions = {}) => {
     try {
       return await proxyToWebDev(c)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = unknownErrorMessage(error)
       return c.html(`Web dev server 代理失败：${message}。请确认 bun run dev:agent-web 正在运行。`, 503)
     }
   })

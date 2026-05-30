@@ -13,8 +13,8 @@ import {
   type ParseRecord,
   type User,
 } from '../db/schema'
-import { badRequest, forbidden, notFound, upstreamError } from '../lib/errors'
-import { createProxiedDownloadUrl } from '../lib/linkProxy'
+import { badRequest, forbidden, notFound, upstreamError, unknownErrorMessage } from '../lib/errors'
+import { createLinkProxyContext, createProxiedDownloadUrl, type LinkProxyContext } from '../lib/linkProxy'
 import { getAccountPolicy, getBaiduSettings, getDownloadSettings, getParseLimits } from '../settings/service'
 import {
   acquireLocalAccount,
@@ -206,7 +206,7 @@ const downloadUaForRoute = (route?: string | null, credentialSource: CredentialS
 
 const resolveUaForRoute = (route: ParseRoute) => downloadUaForRoute(route)
 
-const serializeJob = (job: ParseJob) => {
+const serializeJob = async (job: ParseJob, context: LinkProxyContext = createLinkProxyContext()) => {
   const aheadCount = getAheadCount(job)
   const record = job.parseRecordId
     ? db.select({ accountId: parseRecords.accountId }).from(parseRecords).where(eq(parseRecords.id, job.parseRecordId)).get()
@@ -223,7 +223,7 @@ const serializeJob = (job: ParseJob) => {
           fs_id: Number(job.fsId),
           ua: job.resultUa ?? getDownloadSettings().directDownloadUA,
           account_id: String(record?.accountId ?? ''),
-          urls: [createProxiedDownloadUrl(job.resultUrl, { filename: job.filename, expiresAt: job.linkExpiresAt })],
+          urls: [await createProxiedDownloadUrl(job.resultUrl, { filename: job.filename, expiresAt: job.linkExpiresAt, context })],
           credentialSource: job.credentialSource,
           parseRoute: job.parseRoute,
           record_id: job.parseRecordId,
@@ -233,7 +233,7 @@ const serializeJob = (job: ParseJob) => {
   }
 }
 
-const serializeRecord = (record: ParseRecord) => {
+const serializeRecord = async (record: ParseRecord, context: LinkProxyContext = createLinkProxyContext()) => {
   const { route: _legacyRoute, accountOwnerUserId: _accountOwnerUserId, ...publicRecord } = record
   return {
     ...publicRecord,
@@ -242,7 +242,7 @@ const serializeRecord = (record: ParseRecord) => {
       : record.parseRoute
         ? `${record.credentialSource}.${record.parseRoute}`
         : '-',
-    resultUrl: record.resultUrl ? createProxiedDownloadUrl(record.resultUrl, { filename: record.filename, expiresAt: record.linkExpiresAt }) : record.resultUrl,
+    resultUrl: record.resultUrl ? await createProxiedDownloadUrl(record.resultUrl, { filename: record.filename, expiresAt: record.linkExpiresAt, context }) : record.resultUrl,
     linkExpired: record.linkExpiresAt ? record.linkExpiresAt.getTime() <= Date.now() : true,
   }
 }
@@ -403,7 +403,7 @@ const appErrorInfo = (error: unknown) => {
     const message = 'message' in error && typeof error.message === 'string' ? error.message : null
     if (code || message) return { code: code ?? 'UNKNOWN', message: message ?? code ?? '未知错误' }
   }
-  const appError = error instanceof Error ? error : new Error(String(error))
+  const appError = error instanceof Error ? error : new Error(unknownErrorMessage(error))
   const code = 'code' in appError && typeof appError.code === 'string' ? appError.code : 'UNKNOWN'
   return { code, message: appError.message }
 }
@@ -1418,7 +1418,7 @@ export const parseLinks = async (input: ParseInput, user?: User) => {
     dir: input.dir,
     fsIds: input.fsIds,
   })
-  return [toParsedLink(result)]
+  return [await toParsedLink(result)]
 }
 
 export const parseLinksForBroker = async (
@@ -1436,16 +1436,16 @@ export const parseLinksForBroker = async (
     fsIds: input.fsIds,
     accountWait: options.accountWait,
   })
-  return [toParsedLink(result)]
+  return [await toParsedLink(result)]
 }
 
-const toParsedLink = (result: ParseExecutionResult): ParsedLink & Record<string, unknown> => ({
+const toParsedLink = async (result: ParseExecutionResult, context: LinkProxyContext = createLinkProxyContext()): Promise<ParsedLink & Record<string, unknown>> => ({
   message: 'success',
   filename: result.filename,
   fs_id: result.fsId,
   ua: result.ua,
   account_id: String(result.accountId ?? ''),
-  urls: [createProxiedDownloadUrl(result.url, { filename: result.filename, expiresAt: result.linkExpiresAt })],
+  urls: [await createProxiedDownloadUrl(result.url, { filename: result.filename, expiresAt: result.linkExpiresAt, context })],
   credentialSource: result.credentialSource,
   parseRoute: result.parseRoute,
   record_id: result.recordId,
@@ -1480,7 +1480,7 @@ const resolveDiskRecord = async (
   }
 }
 
-const insertDiskReparseJob = (input: {
+const insertDiskReparseJob = async (input: {
   user: User
   record: ParseRecord
   account: BaiduAccount
@@ -1589,7 +1589,7 @@ const insertDiskReparseJob = (input: {
   return serializeJob(job)
 }
 
-const insertSuccessfulJob = (input: {
+const insertSuccessfulJob = async (input: {
   user: User
   shareUrl: string
   surl: string
@@ -1637,7 +1637,7 @@ const insertSuccessfulJob = (input: {
   return serializeJob(job)
 }
 
-const insertFailedJob = (input: {
+const insertFailedJob = async (input: {
   user: User
   shareUrl: string
   surl: string
@@ -1832,7 +1832,7 @@ const processNextJob = async () => {
   }
 }
 
-export const getParseJob = (id: number, user?: User) => {
+export const getParseJob = async (id: number, user?: User) => {
   if (!user) throw badRequest('LOGIN_REQUIRED', '请先登录')
   const job = db.select().from(parseJobs).where(eq(parseJobs.id, id)).get()
   if (!job) throw notFound('JOB_NOT_FOUND', '任务不存在')
@@ -1840,7 +1840,7 @@ export const getParseJob = (id: number, user?: User) => {
   return serializeJob(job)
 }
 
-export const listParseHistory = (
+export const listParseHistory = async (
   input: {
     status?: string
     credentialSource?: string
@@ -1870,7 +1870,8 @@ export const listParseHistory = (
   }
   const where = and(...filters)
   const [{ value: total }] = db.select({ value: sql<number>`COUNT(*)` }).from(parseRecords).where(where).all()
-  const records = db
+  const context = createLinkProxyContext()
+  const rows = db
     .select()
     .from(parseRecords)
     .where(where)
@@ -1878,7 +1879,7 @@ export const listParseHistory = (
     .limit(pageSize)
     .offset((page - 1) * pageSize)
     .all()
-    .map(serializeRecord)
+  const records = await Promise.all(rows.map((record) => serializeRecord(record, context)))
 
   return {
     records,
@@ -1889,11 +1890,12 @@ export const listParseHistory = (
   }
 }
 
-export const getParseHistoryDetail = (id: number, user?: User) => {
+export const getParseHistoryDetail = async (id: number, user?: User) => {
   if (!user) throw badRequest('LOGIN_REQUIRED', '请先登录')
   const record = db.select().from(parseRecords).where(eq(parseRecords.id, id)).get()
   if (!record) throw notFound('HISTORY_NOT_FOUND', '解析记录不存在')
   if (record.userId !== user.id && !user.isAdmin) throw forbidden('HISTORY_FORBIDDEN', '无权查看该记录')
+  const context = createLinkProxyContext()
   const events = db
     .select()
     .from(parseEvents)
@@ -1903,7 +1905,7 @@ export const getParseHistoryDetail = (id: number, user?: User) => {
     .map(serializeEvent)
   const attempts = db.select().from(parseAttempts).where(eq(parseAttempts.parseRecordId, id)).orderBy(asc(parseAttempts.createdAt), asc(parseAttempts.id)).all()
   return {
-    record: serializeRecord(record),
+    record: await serializeRecord(record, context),
     events,
     attempts,
   }
@@ -1930,10 +1932,10 @@ export const reparseHistory = async (id: number, user?: User) => {
     const startedAt = new Date()
     try {
       const result = await resolveDiskRecord(account, { path })
-      return insertDiskReparseJob({ user, record, account, path, result, startedAt })
+      return await insertDiskReparseJob({ user, record, account, path, result, startedAt })
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'DISK_REPARSE_FAILED'
-      const message = error instanceof Error ? error.message : String(error)
+      const message = unknownErrorMessage(error)
       const details = {
         accountId: account.id,
         credentialSource: account.credentialSource,

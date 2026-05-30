@@ -39,7 +39,8 @@ import {
   listBrokerRuns,
   updateBrokerConfig,
 } from '../broker/runtime'
-import { badRequest, notFound, unauthorized } from '../lib/errors'
+import { badRequest, notFound, unauthorized, unknownErrorMessage } from '../lib/errors'
+import { createLinkProxyContext, createProxiedDownloadUrl } from '../lib/linkProxy'
 import { BaiduClient } from '../baidu/client'
 import {
   acceptRiskConsent,
@@ -51,7 +52,7 @@ import {
   verifyAgentPassword,
   type RiskConsentType,
 } from '../security/service'
-import { getBaiduSettings, getDownloadSettings, getSettingsSnapshot, setSettings } from '../settings/service'
+import { getBaiduSettings, getDownloadSettings, getSettingsSnapshot, setSettings, verifyLinkProxyV2Endpoints } from '../settings/service'
 import { getDesktopRuntime, openDesktopExternalBrowser, setDesktopExternalAccess } from '../desktop/runtime'
 import { cleanupRuntimeData, factoryResetAgentData, getMaintenanceSummary } from '../maintenance/service'
 import { getUpdateCheck } from '../update/service'
@@ -82,6 +83,10 @@ const requireLocalUser = (c: Context<AgentEnv>) => {
 }
 
 const emptyJsonSchema = z.object({}).optional()
+
+const linkProxyV2VerifySchema = z.object({
+  endpoints: z.union([z.string(), z.array(z.string())]),
+})
 
 const accountSchema = z.object({
   credentialSource: z.enum(['cookie', 'open_platform']).optional(),
@@ -328,7 +333,7 @@ export const typedRoutes = new Hono<AgentEnv>()
   .get('/api/settings', requireAgentPassword, (c) => {
     return c.json({ code: 'OK', data: getSettingsSnapshot() })
   })
-  .put('/api/settings', requireAgentPassword, zValidator('json', settingsUpdateSchema), (c) => {
+  .put('/api/settings', requireAgentPassword, zValidator('json', settingsUpdateSchema), async (c) => {
     const body = c.req.valid('json')
     const values = body?.values ?? {}
     if (
@@ -347,7 +352,12 @@ export const typedRoutes = new Hono<AgentEnv>()
     ) {
       requireRiskConsent('broker_execution')
     }
-    const data = setSettings(values)
+    const data = await setSettings(values)
+    return c.json({ code: 'OK', data })
+  })
+  .post('/api/settings/link-proxy/v2/verify', requireAgentPassword, zValidator('json', linkProxyV2VerifySchema), async (c) => {
+    const body = c.req.valid('json')
+    const data = await verifyLinkProxyV2Endpoints(body.endpoints)
     return c.json({ code: 'OK', data })
   })
   .use('/api/maintenance/*', requireAgentPassword)
@@ -564,10 +574,18 @@ export const typedRoutes = new Hono<AgentEnv>()
         message: '网盘文件解析成功',
         details: eventDetails,
       })
-      return c.json({ code: 'OK', data: { ...data, record_id: Number(recordId) } })
+      const context = createLinkProxyContext()
+      return c.json({
+        code: 'OK',
+        data: {
+          ...data,
+          urls: await Promise.all(data.urls.map((url) => createProxiedDownloadUrl(url, { filename: body.filename, expiresAt: data.link_expires_at ? new Date(data.link_expires_at) : null, context }))),
+          record_id: Number(recordId),
+        },
+      })
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'DISK_RESOLVE_FAILED'
-      const message = error instanceof Error ? error.message : String(error)
+      const message = unknownErrorMessage(error)
       db.insert(parseRecords)
         .values({
           userId: user.id,
@@ -640,19 +658,19 @@ export const typedRoutes = new Hono<AgentEnv>()
     const data = await submitParseJob(body, user)
     return c.json({ code: 'OK', data })
   })
-  .get('/api/local/parse/jobs/:id', (c) => {
+  .get('/api/local/parse/jobs/:id', async (c) => {
     const user = requireLocalUser(c)
-    const data = getParseJob(Number(c.req.param('id')), user)
+    const data = await getParseJob(Number(c.req.param('id')), user)
     return c.json({ code: 'OK', data })
   })
-  .get('/api/local/history', zValidator('query', localHistoryQuerySchema), (c) => {
+  .get('/api/local/history', zValidator('query', localHistoryQuerySchema), async (c) => {
     const user = requireLocalUser(c)
-    const data = listParseHistory(c.req.valid('query'), user)
+    const data = await listParseHistory(c.req.valid('query'), user)
     return c.json({ code: 'OK', data })
   })
-  .get('/api/local/history/:id', (c) => {
+  .get('/api/local/history/:id', async (c) => {
     const user = requireLocalUser(c)
-    const data = getParseHistoryDetail(Number(c.req.param('id')), user)
+    const data = await getParseHistoryDetail(Number(c.req.param('id')), user)
     return c.json({ code: 'OK', data })
   })
   .post('/api/local/history/:id/reparse', zValidator('json', localReparseSchema), async (c) => {

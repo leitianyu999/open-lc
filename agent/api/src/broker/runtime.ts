@@ -4,7 +4,7 @@ import { parseLinksForBroker } from '../baidu/service'
 import { accountUsabilityMessage, accountUsabilityReason, isUsableLocalAccount } from '../baidu/accountUsability'
 import { appSettings, baiduAccounts, brokerRunEvents, brokerRuns, type BaiduAccount, type BrokerRun } from '../db/schema'
 import { ensureSystemUser } from '../localUser'
-import { badRequest, upstreamError } from '../lib/errors'
+import { badRequest, upstreamError, unknownErrorMessage } from '../lib/errors'
 import {
   getParseLimits,
   getSettingBoolean,
@@ -372,7 +372,7 @@ const appErrorInfo = (error: unknown) => {
     }
   }
   if (error instanceof Error) return { code: 'UNKNOWN_ERROR', message: error.message, httpStatus: null, targetUrl: null }
-  return { code: 'UNKNOWN_ERROR', message: String(error), httpStatus: null, targetUrl: null }
+  return { code: 'UNKNOWN_ERROR', message: unknownErrorMessage(error), httpStatus: null, targetUrl: null }
 }
 
 const mapFailureCode = (code: string, message: string) => {

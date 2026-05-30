@@ -134,6 +134,7 @@ export function BrokerRunDetailPage() {
         loading={detailQuery.isFetching}
         open={selectedRecordId !== null}
         onClose={() => setSelectedRecordId(null)}
+        onNotify={pushNotification}
         onReparse={reparse}
         onSend={(downloader, items) => void sendItems(downloader, items)}
         reparsePending={reparseMutation.isPending}

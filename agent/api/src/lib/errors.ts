@@ -14,6 +14,24 @@ export class AppError extends Error {
 
 export const isAppError = (error: unknown): error is AppError => error instanceof AppError
 
+export const unknownErrorMessage = (error: unknown, fallback = '未知错误') => {
+  if (error instanceof Error && error.message) return error.message
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    if (typeof record.message === 'string' && record.message.trim()) return record.message
+    if (typeof record.code === 'string' && record.code.trim()) return record.code
+    try {
+      return JSON.stringify(record)
+    } catch {
+      return fallback
+    }
+  }
+
+  if (error === undefined || error === null || error === '') return fallback
+  return String(error)
+}
+
 export const badRequest = (code: string, message: string, details?: unknown) => new AppError(code, message, 400, details)
 
 export const unauthorized = (code: string, message: string, details?: unknown) => new AppError(code, message, 401, details)
