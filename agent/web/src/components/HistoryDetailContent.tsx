@@ -46,6 +46,13 @@ export function HistoryDetailContent({
       </section>
       <section className="grid gap-3">
         <div className="flex items-center justify-between gap-3">
+          <h4 className="font-bold text-slate-900">中转文件</h4>
+          <span className="text-xs font-semibold text-slate-500">{detail.tempFiles.length} 个</span>
+        </div>
+        <TempFileList tempFiles={detail.tempFiles} />
+      </section>
+      <section className="grid gap-3">
+        <div className="flex items-center justify-between gap-3">
           <h4 className="font-bold text-slate-900">账号尝试</h4>
           <span className="text-xs font-semibold text-slate-500">{detail.attempts.length} 次</span>
         </div>
@@ -89,6 +96,36 @@ function RecordSummary({ record }: { record: LocalHistoryRecord }) {
         ) : null}
       </div>
     </section>
+  )
+}
+
+function TempFileList({ tempFiles }: { tempFiles: LocalHistoryDetail['tempFiles'] }) {
+  if (tempFiles.length === 0) return <EmptyState title="暂无中转文件记录" />
+
+  return (
+    <div className="grid gap-2">
+      {tempFiles.map((item) => (
+        <div className="rounded-lg border border-slate-200 p-3" key={item.id}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <StatusBadge status={item.status} />
+              <span className="text-sm font-semibold text-slate-900">#{item.id}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">失败 {item.retryCount} 次</span>
+              {item.autoCleanupSkipped ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">定时清理已跳过</span> : null}
+              {item.manualCleanupSkipped ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">手动清理也会跳过</span> : null}
+              {item.orphan ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">孤儿文件</span> : null}
+            </div>
+            <span className="text-xs text-slate-500">{formatDateTime(item.updatedAt)}</span>
+          </div>
+          <div className="mt-2 grid gap-1 text-sm text-slate-600">
+            <InfoRow label="路径" value={item.path || item.tempDir} />
+            <InfoRow label="目录" value={item.tempDir} />
+            {item.deletedAt ? <InfoRow label="删除" value={formatDateTime(item.deletedAt)} /> : null}
+            {item.errorMessage ? <InfoRow label="错误" value={item.errorMessage} tone="danger" /> : null}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, like, notInArray, or, sql } from 'drizzle-orm'
 import { db, lastInsertId } from '../db'
 import {
   baiduAccounts,
   baiduTempFiles,
+  tempFileCleanupRuns,
   parseAttempts,
   parseEvents,
   parseJobs,
@@ -11,6 +12,7 @@ import {
   type BaiduAccount,
   type ParseJob,
   type ParseRecord,
+  type TempFileCleanupRun,
   type User,
 } from '../db/schema'
 import { badRequest, forbidden, notFound, upstreamError, unknownErrorMessage } from '../lib/errors'
@@ -87,6 +89,18 @@ export type TempFileCleanupResult = {
   firstError: string | null
 }
 
+export type TempFileCleanupRunSnapshot = {
+  id: number
+  trigger: 'auto' | 'manual'
+  status: 'running' | 'success' | 'failed'
+  startedAt: string
+  finishedAt: string | null
+  totalCandidates: number
+  processed: number
+  currentTempFileId: number | null
+  result: TempFileCleanupResult
+}
+
 export type TempFileCleanupSummary = {
   active: number
   deletePending: number
@@ -111,11 +125,30 @@ export type TempFileCleanupSummary = {
     updatedAt: string
   }>
   lastRun: {
+    id: number
     startedAt: string
-    finishedAt: string
+    finishedAt: string | null
     trigger: 'auto' | 'manual'
+    status: 'running' | 'success' | 'failed'
+    totalCandidates: number
+    processed: number
     result: TempFileCleanupResult
   } | null
+  recentRuns: Array<{
+    id: number
+    trigger: 'auto' | 'manual'
+    status: 'running' | 'success' | 'failed'
+    startedAt: string
+    finishedAt: string | null
+    totalCandidates: number
+    processed: number
+    result: TempFileCleanupResult
+  }>
+}
+
+export type TempFileCleanupStatus = {
+  running: TempFileCleanupRunSnapshot | null
+  recentRuns: TempFileCleanupSummary['recentRuns']
 }
 
 type ShareDirFallbackInfo = {
@@ -302,6 +335,21 @@ const parseEventDetails = (details: string | null) => {
 const serializeEvent = (event: typeof parseEvents.$inferSelect) => ({
   ...event,
   details: parseEventDetails(event.details),
+})
+
+const serializeTempFileDetail = (item: typeof baiduTempFiles.$inferSelect & { accountExists?: boolean | number | null }) => ({
+  id: item.id,
+  status: item.status,
+  tempDir: item.tempDir,
+  path: item.path,
+  retryCount: item.retryCount,
+  errorMessage: item.errorMessage,
+  createdAt: item.createdAt.toISOString(),
+  updatedAt: item.updatedAt.toISOString(),
+  deletedAt: item.deletedAt?.toISOString() ?? null,
+  autoCleanupSkipped: item.retryCount > autoTempDeleteRetryLimit,
+  manualCleanupSkipped: item.retryCount > manualTempDeleteRetryLimit,
+  orphan: !item.accountId || item.accountExists === false || item.accountExists === 0,
 })
 
 const getAheadCount = (job: ParseJob) => {
@@ -1958,10 +2006,35 @@ export const getParseHistoryDetail = async (id: number, user?: User) => {
     .all()
     .map(serializeEvent)
   const attempts = db.select().from(parseAttempts).where(eq(parseAttempts.parseRecordId, id)).orderBy(asc(parseAttempts.createdAt), asc(parseAttempts.id)).all()
+  const tempFiles = db
+    .select({
+      id: baiduTempFiles.id,
+      parseRecordId: baiduTempFiles.parseRecordId,
+      parseJobId: baiduTempFiles.parseJobId,
+      accountId: baiduTempFiles.accountId,
+      tempDir: baiduTempFiles.tempDir,
+      path: baiduTempFiles.path,
+      fsId: baiduTempFiles.fsId,
+      sizeBytes: baiduTempFiles.sizeBytes,
+      status: baiduTempFiles.status,
+      errorMessage: baiduTempFiles.errorMessage,
+      retryCount: baiduTempFiles.retryCount,
+      createdAt: baiduTempFiles.createdAt,
+      deletedAt: baiduTempFiles.deletedAt,
+      updatedAt: baiduTempFiles.updatedAt,
+      accountExists: sql<boolean>`CASE WHEN ${baiduTempFiles.accountId} IS NULL THEN 0 WHEN ${baiduAccounts.id} IS NULL THEN 0 ELSE 1 END`,
+    })
+    .from(baiduTempFiles)
+    .leftJoin(baiduAccounts, eq(baiduTempFiles.accountId, baiduAccounts.id))
+    .where(eq(baiduTempFiles.parseRecordId, id))
+    .orderBy(asc(baiduTempFiles.createdAt), asc(baiduTempFiles.id))
+    .all()
+    .map(serializeTempFileDetail)
   return {
     record: await serializeRecord(record, context),
     events,
     attempts,
+    tempFiles,
   }
 }
 
@@ -2078,7 +2151,9 @@ const emptyTempCleanupResult = (): TempFileCleanupResult => ({
 })
 
 let tempCleanupRunning = false
-let lastTempCleanupRun: TempFileCleanupSummary['lastRun'] = null
+let activeTempCleanupRun: TempFileCleanupRunSnapshot | null = null
+
+const tempCleanupRunRetentionLimit = 50
 
 const tempFileSnapshot = (item: typeof baiduTempFiles.$inferSelect) => ({
   id: item.id,
@@ -2088,6 +2163,102 @@ const tempFileSnapshot = (item: typeof baiduTempFiles.$inferSelect) => ({
   createdAt: item.createdAt.toISOString(),
   errorMessage: item.errorMessage,
 })
+
+const serializeCleanupRunResult = (run: Pick<TempFileCleanupRun, 'attempted' | 'deleted' | 'failed' | 'skipped' | 'orphan' | 'waitingForExpiry' | 'firstError'>) => ({
+  attempted: run.attempted,
+  deleted: run.deleted,
+  failed: run.failed,
+  skipped: run.skipped,
+  orphan: run.orphan,
+  waitingForExpiry: run.waitingForExpiry,
+  firstError: run.firstError,
+})
+
+const serializeCleanupRun = (
+  run: TempFileCleanupRun,
+): TempFileCleanupSummary['recentRuns'][number] => ({
+  id: run.id,
+  trigger: run.trigger,
+  status: run.status,
+  startedAt: run.startedAt.toISOString(),
+  finishedAt: run.finishedAt?.toISOString() ?? null,
+  totalCandidates: run.totalCandidates,
+  processed: run.processed,
+  result: serializeCleanupRunResult(run),
+})
+
+const listRecentCleanupRuns = () =>
+  db.select().from(tempFileCleanupRuns).orderBy(desc(tempFileCleanupRuns.startedAt), desc(tempFileCleanupRuns.id)).limit(10).all().map(serializeCleanupRun)
+
+const createTempCleanupRun = (trigger: 'auto' | 'manual', startedAt: Date) => {
+  db.insert(tempFileCleanupRuns)
+    .values({
+      trigger,
+      status: 'running',
+      startedAt,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    })
+    .run()
+  return lastInsertId()
+}
+
+const updateTempCleanupRunProgress = (runId: number, progress: Partial<Omit<TempFileCleanupRunSnapshot, 'id' | 'trigger' | 'startedAt' | 'finishedAt'>>) => {
+  const patch: Partial<typeof tempFileCleanupRuns.$inferInsert> = {
+    updatedAt: new Date(),
+  }
+  if (typeof progress.status === 'string') patch.status = progress.status
+  if (typeof progress.totalCandidates === 'number') patch.totalCandidates = progress.totalCandidates
+  if (typeof progress.processed === 'number') patch.processed = progress.processed
+  if (progress.result) {
+    patch.attempted = progress.result.attempted
+    patch.deleted = progress.result.deleted
+    patch.failed = progress.result.failed
+    patch.skipped = progress.result.skipped
+    patch.orphan = progress.result.orphan
+    patch.waitingForExpiry = progress.result.waitingForExpiry
+    patch.firstError = progress.result.firstError
+  }
+  db.update(tempFileCleanupRuns).set(patch).where(eq(tempFileCleanupRuns.id, runId)).run()
+}
+
+const finishTempCleanupRun = (runId: number, status: 'success' | 'failed', result: TempFileCleanupResult, finishedAt: Date, processed: number, totalCandidates: number) => {
+  db.update(tempFileCleanupRuns)
+    .set({
+      status,
+      finishedAt,
+      totalCandidates,
+      processed,
+      attempted: result.attempted,
+      deleted: result.deleted,
+      failed: result.failed,
+      skipped: result.skipped,
+      orphan: result.orphan,
+      waitingForExpiry: result.waitingForExpiry,
+      firstError: result.firstError,
+      updatedAt: finishedAt,
+    })
+    .where(eq(tempFileCleanupRuns.id, runId))
+    .run()
+}
+
+const pruneTempCleanupRuns = () => {
+  const keepRows = db
+    .select({ id: tempFileCleanupRuns.id })
+    .from(tempFileCleanupRuns)
+    .orderBy(desc(tempFileCleanupRuns.startedAt), desc(tempFileCleanupRuns.id))
+    .limit(tempCleanupRunRetentionLimit)
+    .all()
+  const keepIds = keepRows.map((row) => row.id)
+  const cutoffMs = Date.now() - 7 * 24 * 60 * 60 * 1000
+  if (keepIds.length > 0) {
+    db.delete(tempFileCleanupRuns)
+      .where(and(notInArray(tempFileCleanupRuns.id, keepIds), sql`${tempFileCleanupRuns.startedAt} < ${cutoffMs}`))
+      .run()
+    return
+  }
+  db.delete(tempFileCleanupRuns).where(sql`${tempFileCleanupRuns.startedAt} < ${cutoffMs}`).run()
+}
 
 const markStaleActiveTempFilesPending = () => {
   const staleActiveCutoff = Date.now() - 30 * 60 * 1000
@@ -2127,83 +2298,129 @@ const runTempFileCleanup = async (input: {
   if (tempCleanupRunning) return { ...emptyTempCleanupResult(), skipped: 1, firstError: '中转文件清理正在运行' }
   tempCleanupRunning = true
   const startedAt = new Date()
+  const runId = createTempCleanupRun(input.trigger, startedAt)
   const result = emptyTempCleanupResult()
+  let processed = 0
+  let totalCandidates = 0
+  activeTempCleanupRun = {
+    id: runId,
+    trigger: input.trigger,
+    status: 'running',
+    startedAt: startedAt.toISOString(),
+    finishedAt: null,
+    totalCandidates,
+    processed,
+    currentTempFileId: null,
+    result: { ...result },
+  }
   try {
     markStaleActiveTempFilesPending()
     const openPlatformDeleteCutoff = Date.now() - getDownloadSettings().linkCacheTtlSeconds * 1000
     const pending = selectTempCleanupCandidates(input.includeFailed, input.limit ?? 20)
+    totalCandidates = pending.length
+    activeTempCleanupRun = activeTempCleanupRun
+      ? {
+          ...activeTempCleanupRun,
+          totalCandidates,
+        }
+      : null
+    updateTempCleanupRunProgress(runId, { totalCandidates, processed, result })
     for (const item of pending) {
+      activeTempCleanupRun = activeTempCleanupRun
+        ? {
+            ...activeTempCleanupRun,
+            currentTempFileId: item.id,
+          }
+        : null
       if (item.retryCount > input.maxRetryCount) {
         result.skipped += 1
-        continue
-      }
-      const accountMeta = item.accountId
-        ? db
-            .select({
-              credentialSource: baiduAccounts.credentialSource,
-            })
-            .from(baiduAccounts)
-            .where(eq(baiduAccounts.id, item.accountId))
-            .get()
-        : null
-      if (!item.accountId || !accountMeta) {
-        result.orphan += 1
-        result.skipped += 1
-        continue
-      }
-      if (accountMeta.credentialSource === 'open_platform' && item.createdAt.getTime() > openPlatformDeleteCutoff) {
-        result.waitingForExpiry += 1
-        result.skipped += 1
-        continue
-      }
-      const account = acquireAccountById(item.accountId)
-      if (!account) {
-        result.skipped += 1
-        if (!result.firstError) result.firstError = `账号 #${item.accountId} 当前不可用，已跳过中转文件 #${item.id}`
-        continue
-      }
-      result.attempted += 1
-      try {
-        const stillExists = await tempPathStillExists({
-          account,
-          tempDir: item.tempDir,
-          path: item.path,
-        })
-        if (!stillExists) {
-          markTempDeleted(item.id)
-          result.deleted += 1
-          recordParseEvent({
-            type: 'temp_delete_success',
-            jobId: item.parseJobId,
-            recordId: item.parseRecordId,
-            accountId: account.id,
-            tempFileId: item.id,
-            status: 'success',
-            message: '转存临时路径已不存在，标记为已删除',
-            details: { tempDir: item.tempDir, path: item.path },
-          })
-          continue
+      } else {
+        const accountMeta = item.accountId
+          ? db
+              .select({
+                credentialSource: baiduAccounts.credentialSource,
+              })
+              .from(baiduAccounts)
+              .where(eq(baiduAccounts.id, item.accountId))
+              .get()
+          : null
+        if (!item.accountId || !accountMeta) {
+          result.orphan += 1
+          result.skipped += 1
+        } else if (accountMeta.credentialSource === 'open_platform' && item.createdAt.getTime() > openPlatformDeleteCutoff) {
+          result.waitingForExpiry += 1
+          result.skipped += 1
+        } else {
+          const account = acquireAccountById(item.accountId)
+          if (!account) {
+            result.skipped += 1
+            if (!result.firstError) result.firstError = `账号 #${item.accountId} 当前不可用，已跳过中转文件 #${item.id}`
+          } else {
+            result.attempted += 1
+            try {
+              const stillExists = await tempPathStillExists({
+                account,
+                tempDir: item.tempDir,
+                path: item.path,
+              })
+              if (!stillExists) {
+                markTempDeleted(item.id)
+                result.deleted += 1
+                recordParseEvent({
+                  type: 'temp_delete_success',
+                  jobId: item.parseJobId,
+                  recordId: item.parseRecordId,
+                  accountId: account.id,
+                  tempFileId: item.id,
+                  status: 'success',
+                  message: '转存临时路径已不存在，标记为已删除',
+                  details: { tempDir: item.tempDir, path: item.path },
+                })
+              } else {
+                await deleteTempFileWithAccount({ item, account })
+                result.deleted += 1
+              }
+            } catch (error) {
+              result.failed += 1
+              const info = appErrorInfo(error)
+              if (!result.firstError) result.firstError = info.message
+              markTempDeleteFailure(item.id, info.message, info.code)
+            } finally {
+              releaseAccount(account.id)
+            }
+          }
         }
-        await deleteTempFileWithAccount({ item, account })
-        result.deleted += 1
-      } catch (error) {
-        result.failed += 1
-        const info = appErrorInfo(error)
-        if (!result.firstError) result.firstError = info.message
-        markTempDeleteFailure(item.id, info.message, info.code)
-      } finally {
-        releaseAccount(account.id)
       }
+      processed += 1
+      activeTempCleanupRun = activeTempCleanupRun
+        ? {
+            ...activeTempCleanupRun,
+            processed,
+            currentTempFileId: null,
+            result: { ...result },
+          }
+        : null
+      updateTempCleanupRunProgress(runId, { processed, result })
     }
     return result
   } finally {
-    tempCleanupRunning = false
-    lastTempCleanupRun = {
-      startedAt: startedAt.toISOString(),
-      finishedAt: new Date().toISOString(),
-      trigger: input.trigger,
-      result,
+    const finishedAt = new Date()
+    const status = result.failed > 0 || result.firstError ? 'failed' : 'success'
+    finishTempCleanupRun(runId, status, result, finishedAt, processed, totalCandidates)
+    if (activeTempCleanupRun?.id === runId) {
+      activeTempCleanupRun = {
+        ...activeTempCleanupRun,
+        status,
+        finishedAt: finishedAt.toISOString(),
+        totalCandidates,
+        processed,
+        currentTempFileId: null,
+        result: { ...result },
+      }
     }
+    pruneTempCleanupRuns()
+    tempCleanupRunning = false
+    activeTempCleanupRun = null
   }
 }
 
@@ -2256,6 +2473,8 @@ export const getTempFileCleanupSummary = (): TempFileCleanupSummary => {
       retryCount: item.retryCount,
       updatedAt: item.updatedAt.toISOString(),
     }))
+  const recentRuns = listRecentCleanupRuns()
+  const lastRun = recentRuns[0] ?? null
   return {
     active: counts.active ?? 0,
     deletePending: counts.delete_pending ?? 0,
@@ -2264,6 +2483,12 @@ export const getTempFileCleanupSummary = (): TempFileCleanupSummary => {
     orphan: Number(orphanCount ?? 0),
     recentOrphans,
     recentErrors,
-    lastRun: lastTempCleanupRun,
+    lastRun,
+    recentRuns,
   }
 }
+
+export const getTempFileCleanupStatus = (): TempFileCleanupStatus => ({
+  running: activeTempCleanupRun,
+  recentRuns: listRecentCleanupRuns(),
+})

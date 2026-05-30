@@ -17,7 +17,7 @@ The Worker supports two encrypted link modes:
 - `v2` public-key discovery, recommended for new setups. The Worker keeps the encryption root, and LC Agent only stores one or more Worker proxy endpoints.
 - `v1` shared secret, kept for compatibility. LC Agent and the Worker must use the same encryption key.
 
-The Worker declares `URL_ENCRYPTION_KEY` as a required secret in `wrangler.jsonc`. Set it in Cloudflare Dashboard before using the Worker.
+After deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard before using the Worker.
 
 ```txt
 Workers & Pages

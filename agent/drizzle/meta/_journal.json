@@ -15,6 +15,13 @@
       "when": 1779331785491,
       "tag": "0001_giant_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1780114266914,
+      "tag": "0002_rare_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

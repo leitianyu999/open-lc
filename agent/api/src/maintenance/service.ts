@@ -15,6 +15,7 @@ import {
   parseEvents,
   parseJobs,
   parseRecords,
+  tempFileCleanupRuns,
   users,
 } from '../db/schema'
 import { ensureSystemUser, SYSTEM_USER_ID } from '../localUser'
@@ -28,6 +29,7 @@ type MaintenanceSummary = {
   accountEvents: number
   brokerRuns: number
   brokerRunEvents: number
+  tempFileCleanupRuns: number
   baiduAccounts: number
   appSettings: number
   activeParseJobs: number
@@ -53,6 +55,7 @@ export const getMaintenanceSummary = (): MaintenanceSummary => ({
   accountEvents: countSql('account_health_checks') + countSql('account_status_events') + countSql('account_token_events'),
   brokerRuns: countSql('broker_runs'),
   brokerRunEvents: countSql('broker_run_events'),
+  tempFileCleanupRuns: countSql('temp_file_cleanup_runs'),
   baiduAccounts: countSql('baidu_accounts'),
   appSettings: countSql('app_settings'),
   activeParseJobs: countSql('parse_jobs', "status IN ('queued', 'running')"),
@@ -85,6 +88,7 @@ const cleanupRuntimeTables = () => {
   deleteFrom(parseEvents)
   deleteFrom(parseAttempts)
   deleteFrom(baiduTempFiles)
+  deleteFrom(tempFileCleanupRuns)
   deleteFrom(parseJobs)
   deleteFrom(parseRecords)
   deleteFrom(accountHealthChecks)

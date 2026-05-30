@@ -275,6 +275,34 @@ export const baiduTempFiles = sqliteTable(
   }),
 )
 
+export const tempFileCleanupRuns = sqliteTable(
+  'temp_file_cleanup_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    trigger: text('trigger', { enum: ['auto', 'manual'] }).notNull(),
+    status: text('status', { enum: ['running', 'success', 'failed'] })
+      .notNull()
+      .default('running'),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull().default(sql`(unixepoch('subsec') * 1000)`),
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+    totalCandidates: integer('total_candidates').notNull().default(0),
+    processed: integer('processed').notNull().default(0),
+    attempted: integer('attempted').notNull().default(0),
+    deleted: integer('deleted').notNull().default(0),
+    failed: integer('failed').notNull().default(0),
+    skipped: integer('skipped').notNull().default(0),
+    orphan: integer('orphan').notNull().default(0),
+    waitingForExpiry: integer('waiting_for_expiry').notNull().default(0),
+    firstError: text('first_error'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(unixepoch('subsec') * 1000)`),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(sql`(unixepoch('subsec') * 1000)`),
+  },
+  (table) => ({
+    startedIdx: index('temp_file_cleanup_runs_started_idx').on(table.startedAt),
+    statusIdx: index('temp_file_cleanup_runs_status_idx').on(table.status),
+  }),
+)
+
 export const parseEvents = sqliteTable(
   'parse_events',
   {
@@ -372,6 +400,7 @@ export type BaiduAccount = typeof baiduAccounts.$inferSelect
 export type ParseRecord = typeof parseRecords.$inferSelect
 export type ParseJob = typeof parseJobs.$inferSelect
 export type BaiduTempFile = typeof baiduTempFiles.$inferSelect
+export type TempFileCleanupRun = typeof tempFileCleanupRuns.$inferSelect
 export type ParseEvent = typeof parseEvents.$inferSelect
 export type AccountStatusEvent = typeof accountStatusEvents.$inferSelect
 export type AccountTokenEvent = typeof accountTokenEvents.$inferSelect

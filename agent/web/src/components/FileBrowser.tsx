@@ -45,6 +45,12 @@ type PendingShareDirectoryLoad = {
   options?: LoadDirectoryOptions
 }
 
+type ShareDirectoryIssue = {
+  message: string
+  dir: string
+  options?: LoadDirectoryOptions
+}
+
 function ModeSegmentedControl({ value, onChange }: { value: 'share' | 'disk'; onChange: (value: 'share' | 'disk') => void }) {
   const items = [
     { value: 'share' as const, label: '分享浏览', icon: Link2 },
@@ -163,6 +169,7 @@ export function ParserWorkspace() {
   const [cookieDraft, setCookieDraft] = useState(shareCookie)
   const [cookieDraftError, setCookieDraftError] = useState<string | null>(null)
   const [pendingShareDirectoryLoad, setPendingShareDirectoryLoad] = useState<PendingShareDirectoryLoad | null>(null)
+  const [shareDirectoryIssue, setShareDirectoryIssue] = useState<ShareDirectoryIssue | null>(null)
   const [executionOpen, setExecutionOpen] = useAtom(executionOpenAtom)
   const setError = useSetAtom(errorAtom)
   const pushNotification = useSetAtom(pushNotificationAtom)
@@ -294,6 +301,20 @@ export function ParserWorkspace() {
     setCookieModalOpen(true)
   }
 
+  const openCookieManager = () => {
+    setCookieDraft(shareCookie)
+    setCookieDraftError(null)
+    setPendingShareDirectoryLoad(null)
+    setCookieModalOpen(true)
+  }
+
+  const openCookieRetryModal = (issue: ShareDirectoryIssue) => {
+    setCookieDraft(shareCookie)
+    setCookieDraftError(null)
+    setPendingShareDirectoryLoad({ dir: issue.dir, options: issue.options })
+    setCookieModalOpen(true)
+  }
+
   const loadShareDirectoryWithCookie = async (dir: string, options: LoadDirectoryOptions | undefined, cookie: string) => {
     const shareUrl = context.shareUrl.trim()
     if (!shareUrl) {
@@ -356,13 +377,20 @@ export function ParserWorkspace() {
       if (options?.resetWorkspace) {
         setSelected(new Map())
       }
+      setShareDirectoryIssue(null)
     } catch (error) {
       const message = messageFromError(error, '获取文件列表失败')
+      const issue = {
+        message,
+        dir,
+        options,
+      }
       setNode(dir, (node) => ({
         ...node,
         loading: false,
         error: message,
       }))
+      setShareDirectoryIssue(issue)
       setError(message)
     }
   }
@@ -402,6 +430,9 @@ export function ParserWorkspace() {
     setCookieModalOpen(false)
     setPendingShareDirectoryLoad(null)
     setCookieDraftError(null)
+    if (!pendingLoad) {
+      setShareDirectoryIssue(null)
+    }
 
     if (pendingLoad) {
       await loadShareDirectoryWithCookie(pendingLoad.dir, pendingLoad.options, normalizedCookie)
@@ -748,6 +779,11 @@ export function ParserWorkspace() {
                 )}
                 {context.mode === 'disk' ? '读取网盘目录' : '获取分享文件'}
               </Button>
+              {context.mode === 'share' ? (
+                <Button onClick={openCookieManager} variant="secondary">
+                  管理 Cookie
+                </Button>
+              ) : null}
               <Button
                 disabled={selectedList.length === 0 || submitJobMutation.isPending || diskResolveMutation.isPending}
                 onClick={parseSelected}
@@ -778,6 +814,17 @@ export function ParserWorkspace() {
                 {activeLocalAccounts.length > 0 ? `可用账号 ${activeLocalAccounts.length} 条` : '当前没有可用账号'}
               </span>
             </div>
+            {context.mode === 'share' && shareDirectoryIssue ? (
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                <div className="min-w-0">
+                  <div className="font-bold">分享目录读取失败</div>
+                  <div>{shareDirectoryIssue.message}</div>
+                </div>
+                <Button className="shrink-0" onClick={() => openCookieRetryModal(shareDirectoryIssue)} size="sm" variant="secondary">
+                  修改 Cookie
+                </Button>
+              </div>
+            ) : null}
           </div>
           <BrowserHeader dir={context.dir} nodes={nodes} onNavigate={(dir) => loadDirectory(dir)} />
           <FileTree
@@ -813,7 +860,7 @@ export function ParserWorkspace() {
         title="填写分享目录 Cookie"
       >
         <div className="grid gap-4">
-          <Field label="Cookie" hint="填写后点击保存并继续，当前这次目录读取会立即使用新的 Cookie。">
+          <Field label="Cookie" hint={pendingShareDirectoryLoad ? '填写后点击保存并继续，当前这次目录读取会立即使用新的 Cookie。' : '填写后点击保存，后续目录请求会使用新的 Cookie。'}>
             <Textarea
               className="min-h-20 w-full min-w-0 resize-y font-mono text-xs"
               onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -855,7 +902,7 @@ export function ParserWorkspace() {
             </Button>
             <Button disabled={shareFilesMutation.isPending} onClick={() => void saveCookieAndContinue()}>
               {shareFilesMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-              保存并继续
+              {pendingShareDirectoryLoad ? '保存并继续' : '保存'}
             </Button>
           </div>
         </div>

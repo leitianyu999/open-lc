@@ -1,9 +1,10 @@
 import { useSetAtom } from 'jotai'
 import { CheckSquare, Clipboard, Eye, RefreshCw, RotateCcw, Square, Trash2 } from 'lucide-react'
 import { useState, type ChangeEvent } from 'react'
-import { api, messageFromError, type LocalHistoryRecord } from '../api'
+import { api, messageFromError, type LocalHistoryRecord, type TempFilesCleanupResult } from '../api'
 import { DownloaderSendButton } from '../components/DownloaderSendButton'
 import { HistoryDetailDrawer } from '../components/HistoryDetailDrawer'
+import { TempFileCleanupProgressModal } from '../components/TempFileCleanupProgress'
 import { Button, ConfirmDialog, CopyButton, EmptyState, Field, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
 import { formatBytes, formatDateTime } from '../lib/format'
 import { downloadableFromHistoryRecord } from '../lib/history'
@@ -22,6 +23,9 @@ export function HistoryPage() {
   const [selectedDownloadIds, setSelectedDownloadIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const [confirmTempCleanup, setConfirmTempCleanup] = useState(false)
+  const [tempCleanupProgressOpen, setTempCleanupProgressOpen] = useState(false)
+  const [tempCleanupResult, setTempCleanupResult] = useState<TempFilesCleanupResult | null>(null)
+  const [tempCleanupError, setTempCleanupError] = useState<string | null>(null)
   const [filters, setFilters] = useState({
     status: '',
     credentialSource: '',
@@ -46,6 +50,9 @@ export function HistoryPage() {
   })
   const reparseMutation = api.api.local.history[':id'].reparse.$post.useMutation()
   const tempCleanupMutation = api.api.maintenance['temp-files'].cleanup.$post.useMutation()
+  const tempCleanupStatusQuery = api.api.maintenance['temp-files'].cleanup.status.$get.useQuery({
+    refetchInterval: tempCleanupProgressOpen || tempCleanupMutation.isPending ? 1000 : false,
+  })
   const detailQuery = api.api.local.history[':id'].$get.useQuery({
     param: { id: String(selectedRecordId ?? '') },
     enabled: selectedRecordId !== null,
@@ -135,9 +142,14 @@ export function HistoryPage() {
 
   const cleanupTempFiles = async () => {
     setError(null)
+    setTempCleanupError(null)
+    setTempCleanupResult(null)
+    setConfirmTempCleanup(false)
+    setTempCleanupProgressOpen(true)
     try {
       const response = await tempCleanupMutation.mutateAsync({ json: {} })
       const result = response.data
+      setTempCleanupResult(result)
       const details = [
         `尝试 ${result.attempted}`,
         `删除 ${result.deleted}`,
@@ -153,9 +165,11 @@ export function HistoryPage() {
         message: `中转文件清理完成：${details}`,
       })
       if (result.firstError) setError(result.firstError)
-      await Promise.all([historyQuery.refetch(), detailQuery.refetch()])
+      await Promise.all([historyQuery.refetch(), detailQuery.refetch(), tempCleanupStatusQuery.refetch()])
     } catch (error) {
-      setError(messageFromError(error, '清理中转文件失败'))
+      const message = messageFromError(error, '清理中转文件失败')
+      setError(message)
+      setTempCleanupError(message)
     } finally {
       setConfirmTempCleanup(false)
     }
@@ -355,6 +369,14 @@ export function HistoryPage() {
         onConfirm={() => {
           void cleanupTempFiles()
         }}
+      />
+      <TempFileCleanupProgressModal
+        error={tempCleanupError}
+        open={tempCleanupProgressOpen}
+        pending={tempCleanupMutation.isPending}
+        result={tempCleanupResult}
+        status={tempCleanupStatusQuery.data?.data}
+        onClose={() => setTempCleanupProgressOpen(false)}
       />
     </Panel>
   )
