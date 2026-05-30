@@ -105,9 +105,11 @@ Common runtime paths:
 
 Do not commit real cookies, generated direct links, local SQLite files, or local environment files.
 
-## Deploy Cloudflare Worker
+## Deploy Worker Proxy
 
-The optional download proxy Worker lives in `worker/` as an independent Cloudflare Worker project.
+The optional download proxy can be deployed to Cloudflare Workers or Alibaba Cloud ESA.
+
+The Cloudflare Worker lives in `worker/` as an independent project. The shared script source is also available at `scripts/worker.js`.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker)
 
@@ -116,7 +118,7 @@ The Worker supports two encrypted link modes:
 - `v2` public-key discovery, recommended for new setups. The Worker keeps the encryption root, and LC Agent only stores one or more Worker proxy endpoints.
 - `v1` shared secret, kept for compatibility. LC Agent and the Worker must use the same encryption key.
 
-After deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard before using the Worker.
+After Cloudflare deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard before using the Worker.
 
 ```txt
 Workers & Pages
@@ -138,6 +140,16 @@ In LC Agent Settings:
 - For `v1`, choose `v1 共享密钥`; the Agent-side Worker encryption key must match `URL_ENCRYPTION_KEY`.
 
 `ALLOWED_HOSTS` defaults to `*`. To restrict upstream hosts, set `ALLOWED_HOSTS` in Worker Variables to a comma-separated host list.
+
+Alibaba Cloud ESA deploy:
+
+ESA is generally friendlier for access from mainland China and can reduce cross-border access instability.
+
+- Open `https://esa.console.aliyun.com/edge/pages`.
+- Create an Edge Function / Edge Routine.
+- Use `scripts/esa.edge.js` as the entry script.
+- Change `CONFIG.URL_ENCRYPTION_KEY` at the top of the script to a strong random string.
+- `ALLOWED_HOSTS` defaults to `*` and usually does not need changes.
 
 Manual deploy:
 

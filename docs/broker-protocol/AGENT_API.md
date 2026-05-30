@@ -30,9 +30,7 @@ Request:
   "available": true,
   "capabilities": {
     "providers": ["baidu"],
-    "max_file_size": 0,
-    "daily_remaining_bytes": 53687091200,
-    "daily_remaining_tasks": 20
+    "features": ["link_proxy:v2"]
   },
   "client_version": "0.0.0"
 }
@@ -66,7 +64,12 @@ Rules:
 
 - Return only tasks that are open for participation.
 - Do not return share URL, password, directory, file name, or other real task payload.
-- `capabilities.max_file_size` is optional. Missing, `null`, or `0` means the Agent does not declare a maximum file-size limit.
+- `capabilities.providers` may be used to match provider support.
+- `capabilities.features` is an optional string array. Current link-proxy tags are `link_proxy:v1` and `link_proxy:v2`.
+- A task may require `link_proxy_requirement=no_link_proxy`.
+- `no_link_proxy` only matches Agents that explicitly report a `features` array and do not include `link_proxy:v1` or `link_proxy:v2`.
+- Old Agents that omit `features` are treated as unknown and do not match `no_link_proxy`.
+- This is a requester-side direct-link requirement, not proof of the final result URL state.
 
 Response:
 
@@ -84,6 +87,7 @@ Response:
       "secondary_pool": 10,
       "tax": 50,
       "max_candidates": 3,
+      "link_proxy_requirement": "any",
       "apply_deadline": "2026-05-13T12:00:00Z",
       "blocking_timeout_seconds": 10,
       "parse_timeout_seconds": 30

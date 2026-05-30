@@ -8,7 +8,9 @@ The Worker source is generated during the Open LC export from the monorepo scrip
 scripts/worker.js -> worker/src/index.js
 ```
 
-## Deploy
+For manual code inspection, use `scripts/worker.js` in the repository root. The ESA entry script is `scripts/esa.edge.js`.
+
+## Cloudflare Deploy
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker)
 
@@ -17,7 +19,7 @@ The Worker supports two encrypted link modes:
 - `v2` public-key discovery, recommended for new setups. The Worker keeps the encryption root, and LC Agent only stores one or more Worker proxy endpoints.
 - `v1` shared secret, kept for compatibility. LC Agent and the Worker must use the same encryption key.
 
-After deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard before using the Worker.
+After Cloudflare deployment, set the `URL_ENCRYPTION_KEY` secret in Cloudflare Dashboard before using the Worker.
 
 ```txt
 Workers & Pages
@@ -41,6 +43,20 @@ In LC Agent Settings:
 `ALLOWED_HOSTS` defaults to `*`. To restrict upstream hosts, set `ALLOWED_HOSTS` in Worker Variables to a comma-separated host list.
 
 Do not commit this secret to the repository.
+
+## Alibaba Cloud ESA
+
+ESA uses the repository root script:
+
+```txt
+scripts/esa.edge.js
+```
+
+ESA is generally friendlier for access from mainland China and can reduce cross-border access instability.
+
+Deploy from `https://esa.console.aliyun.com/edge/pages`, create an Edge Function / Edge Routine, and paste the script content into the editor.
+
+Before deployment, change `CONFIG.URL_ENCRYPTION_KEY` at the top of `scripts/esa.edge.js` to a strong random string. `ALLOWED_HOSTS` defaults to `*` and usually does not need changes.
 
 To verify v2 discovery, open:
 

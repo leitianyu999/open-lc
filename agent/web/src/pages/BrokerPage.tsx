@@ -1,9 +1,9 @@
 import { useSetAtom } from 'jotai'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Play, Radio, RefreshCw } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { type ChangeEvent, useEffect, useState, type ReactNode } from 'react'
+import { Eye, Play, Radio, RefreshCw } from 'lucide-react'
 import { api, messageFromError, type BrokerRun, type BrokerRuntime } from '../api'
-import { Button, EmptyState, InlineAlert, MiddleEllipsis, Panel, StatusBadge, Table } from '../components/ui'
+import { BrokerRunDetailDrawer } from '../components/BrokerRunDetailDrawer'
+import { Button, EmptyState, InlineAlert, Input, MiddleEllipsis, Panel, Select, StatusBadge, Table } from '../components/ui'
 import { formatBytes, formatDateTime } from '../lib/format'
 import { errorAtom, pushNotificationAtom } from '../state'
 
@@ -63,19 +63,46 @@ const runtimeDiagnosis = (runtime: BrokerRuntime) => {
 
 const runTitle = (run: Pick<BrokerRun, 'taskId' | 'payloadSummary'>) => run.payloadSummary?.fileName || `Task ${run.taskId}`
 
+const runStatuses = [
+  'idle',
+  'polling',
+  'participating',
+  'waiting',
+  'active',
+  'parsing',
+  'submitting',
+  'success',
+  'failed',
+  'not_selected',
+  'expired',
+  'submitted_success',
+  'submitted_failure',
+] as const
+
 export function BrokerPage() {
   const setError = useSetAtom(errorAtom)
   const pushNotification = useSetAtom(pushNotificationAtom)
   const [dismissedFailureSignature, setDismissedFailureSignature] = useState<string | null>(null)
+  const [filters, setFilters] = useState({ status: '', q: '', page: 1 })
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const runtimeQuery = api.api.broker.runtime.$get.useQuery({
     refetchInterval: 5000,
+  })
+  const historyQuery = api.api.broker.history.$get.useQuery({
+    query: {
+      status: filters.status || undefined,
+      q: filters.q || undefined,
+      page: String(filters.page),
+      pageSize: '20',
+    },
   })
   const heartbeatMutation = api.api.broker.heartbeat.$post.useMutation()
   const pollMutation = api.api.broker.poll.$post.useMutation()
 
   const runtime = runtimeQuery.data?.data
   const broker = runtime?.broker
-  const recentRuns = runtime?.recentRuns ?? []
+  const history = historyQuery.data?.data
+  const records = history?.records ?? []
   const activeRuns = runtime?.activeRuns ?? []
   const failureSignature = broker ? currentFailureSignature(broker) : null
   const failureMessage = broker ? currentFailureMessage(broker) : null
@@ -101,7 +128,7 @@ export function BrokerPage() {
     setError(null)
     try {
       await heartbeatMutation.mutateAsync({ json: {} })
-      await runtimeQuery.refetch()
+      await Promise.all([runtimeQuery.refetch(), historyQuery.refetch()])
     } catch (error) {
       setError(messageFromError(error, 'Broker heartbeat 失败'))
     }
@@ -111,7 +138,7 @@ export function BrokerPage() {
     setError(null)
     try {
       await pollMutation.mutateAsync({ json: {} })
-      await runtimeQuery.refetch()
+      await Promise.all([runtimeQuery.refetch(), historyQuery.refetch()])
     } catch (error) {
       setError(messageFromError(error, 'Broker poll 失败'))
     }
@@ -120,17 +147,11 @@ export function BrokerPage() {
   const refreshRuntime = async () => {
     setError(null)
     try {
-      await runtimeQuery.refetch()
+      await Promise.all([runtimeQuery.refetch(), historyQuery.refetch()])
     } catch (error) {
       setError(messageFromError(error, 'Broker 执行状态刷新失败'))
     }
   }
-
-  const terminalCounts = useMemo(() => {
-    const success = recentRuns.filter((run) => run.status === 'success' || run.status === 'submitted_success').length
-    const failed = recentRuns.filter((run) => ['failed', 'expired', 'not_selected', 'submitted_failure'].includes(run.status)).length
-    return { success, failed }
-  }, [recentRuns])
 
   return (
     <div className="grid gap-5">
@@ -223,15 +244,77 @@ export function BrokerPage() {
 
       <Panel className="grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-lg font-bold">最近执行</h3>
+          <h3 className="text-lg font-bold">执行记录</h3>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <RefreshCw className="size-4" />
-            success {terminalCounts.success} · failed {terminalCounts.failed}
+            {historyQuery.isFetching ? '刷新中' : `共 ${history?.total ?? 0} 条`}
           </div>
         </div>
-        <RunTable emptyTitle="暂无最近执行" runs={recentRuns} />
+        <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto]">
+          <Field label="状态">
+            <Select
+              value={filters.status}
+              onChange={(event: ChangeEvent<HTMLSelectElement>) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
+            >
+              <option value="">全部</option>
+              {runStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="搜索">
+            <Input
+              value={filters.q}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setFilters((prev) => ({ ...prev, q: event.target.value, page: 1 }))}
+              placeholder="Task / Participation / 文件名 / 错误码 / 消息"
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button className="w-full" disabled={historyQuery.isFetching} onClick={() => historyQuery.refetch()} variant="secondary">
+              <RefreshCw className={`size-4 ${historyQuery.isFetching ? 'animate-spin' : ''}`} />
+              刷新列表
+            </Button>
+          </div>
+        </div>
+        {!history || records.length === 0 ? (
+          <EmptyState title="暂无执行记录" />
+        ) : (
+          <div className="grid gap-3">
+            <RunTable runs={records} onOpenDetail={setSelectedRunId} />
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+              <span>
+                第 {history.page} / {history.totalPages} 页，共 {history.total} 条
+              </span>
+              <div className="flex gap-2">
+                <Button disabled={filters.page <= 1} onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))} size="sm" variant="secondary">
+                  上一页
+                </Button>
+                <Button
+                  disabled={filters.page >= history.totalPages}
+                  onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
+                  size="sm"
+                  variant="secondary"
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Panel>
+      <BrokerRunDetailDrawer open={selectedRunId !== null} runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
     </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-1 text-sm font-semibold text-slate-600">
+      <span>{label}</span>
+      {children}
+    </label>
   )
 }
 
@@ -256,15 +339,14 @@ function RuntimeCell({ label, value, meta }: { label: string; value: string; met
   )
 }
 
-function RunTable({ runs, emptyTitle }: { runs: BrokerRun[]; emptyTitle: string }) {
-  if (runs.length === 0) return <EmptyState title={emptyTitle} />
-
+function RunTable({ runs, onOpenDetail }: { runs: BrokerRun[]; onOpenDetail: (runId: string) => void }) {
   return (
     <Table>
       <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
         <tr>
           <th className="p-3">文件</th>
           <th className="p-3">状态</th>
+          <th className="p-3">失败码</th>
           <th className="p-3">时间</th>
           <th className="p-3">操作</th>
         </tr>
@@ -285,14 +367,14 @@ function RunTable({ runs, emptyTitle }: { runs: BrokerRun[]; emptyTitle: string 
             <td className="p-3">
               <StatusBadge status={run.status} />
             </td>
+            <td className="p-3 text-sm text-slate-600">{run.failureCode || '-'}</td>
             <td className="p-3 text-sm text-slate-600">{formatDateTime(run.updatedAt)}</td>
             <td className="p-3">
               <div className="flex flex-wrap gap-2">
-                <Link to="/broker/runs/$runId" params={{ runId: run.id }}>
-                  <Button size="sm" variant="secondary">
-                    详情
-                  </Button>
-                </Link>
+                <Button onClick={() => onOpenDetail(run.id)} size="sm" variant="secondary">
+                  <Eye className="size-4" />
+                  详情
+                </Button>
               </div>
             </td>
           </tr>

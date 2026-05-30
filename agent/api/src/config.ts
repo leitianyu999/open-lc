@@ -8,8 +8,6 @@ export type AppConfig = {
   baiduFakeCookie: string
   tempDir: string
   parseConcurrency: number
-  maxFilesPerRequest: number
-  maxTotalSizeBytes: number
   requestTimeoutMs: number
   transferDelayMs: number
   databaseUrl: string
@@ -88,8 +86,6 @@ export const config: AppConfig = {
   baiduFakeCookie: stringFromEnv('BAIDU_FAKE_COOKIE', defaultFakeCookie),
   tempDir: stringFromEnv('BAIDU_TEMP_DIR', '/我的资源/下载'),
   parseConcurrency: Math.max(1, numberFromEnv('PARSE_CONCURRENCY', 1)),
-  maxFilesPerRequest: Math.max(1, numberFromEnv('MAX_FILES_PER_REQUEST', 5)),
-  maxTotalSizeBytes: numberFromEnv('MAX_TOTAL_SIZE_BYTES', 0),
   requestTimeoutMs: Math.max(1000, numberFromEnv('BAIDU_REQUEST_TIMEOUT_MS', 20_000)),
   transferDelayMs: numberFromEnv('BAIDU_TRANSFER_DELAY_MS', 800),
   databaseUrl: stringFromEnv('DATABASE_URL', defaultDatabaseUrl),

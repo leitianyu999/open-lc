@@ -1,12 +1,12 @@
-import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, like, lt, ne, or, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { parseLinksForBroker } from '../baidu/service'
 import { accountUsabilityMessage, accountUsabilityReason, isUsableLocalAccount } from '../baidu/accountUsability'
 import { appSettings, baiduAccounts, brokerRunEvents, brokerRuns, type BaiduAccount, type BrokerRun } from '../db/schema'
 import { ensureSystemUser } from '../localUser'
 import { badRequest, upstreamError, unknownErrorMessage } from '../lib/errors'
+import { getLinkProxyConfig } from '../lib/linkProxy'
 import {
-  getParseLimits,
   getSettingBoolean,
   getSettingNumber,
   getSettingString,
@@ -48,6 +48,12 @@ export type PublicBrokerConfig = Omit<BrokerConfig, 'agentToken'> & {
 
 export type BrokerRunStatus = BrokerRun['status']
 export type BrokerRuntimeState = 'running' | 'disabled' | 'misconfigured' | 'paused_no_usable_accounts' | 'maintenance_stopping'
+export type BrokerRunListQuery = {
+  page?: number
+  pageSize?: number
+  status?: string
+  q?: string
+}
 
 type LegacyBrokerConfig = Partial<BrokerConfig>
 
@@ -541,12 +547,16 @@ const listBlockedAccounts = () =>
     .all()
     .filter((account) => !isUsableLocalAccount(account))
 
-const buildCapabilities = (accounts = listLocallyAvailableAccounts()) => {
+const linkProxyFeatures = () => {
+  const proxy = getLinkProxyConfig()
+  if (!proxy.enabled) return []
+  return [`link_proxy:${proxy.version}`]
+}
+
+const buildCapabilities = () => {
   return {
     providers: ['baidu'],
-    max_file_size: getParseLimits().maxTotalSizeBytes,
-    daily_remaining_bytes: accounts.reduce((sum, account) => sum + Math.max(0, Number(account.quotaFreeBytes ?? 0)), 0),
-    daily_remaining_tasks: Math.max(0, accounts.length * 10),
+    features: linkProxyFeatures(),
   }
 }
 
@@ -609,7 +619,7 @@ export const heartbeatBroker = async () => {
       method: 'POST',
       body: {
         available: true,
-        capabilities: buildCapabilities(accounts),
+        capabilities: buildCapabilities(),
         client_version: agentClientVersion,
       },
     })
@@ -1133,7 +1143,7 @@ const serializeRun = (run: BrokerRun) => ({
       : null,
 })
 
-export const listBrokerRuns = (limit = 50) => {
+export const listRecentBrokerRuns = (limit = 50) => {
   adoptLegacyRuns()
   return db
     .select()
@@ -1142,6 +1152,63 @@ export const listBrokerRuns = (limit = 50) => {
     .limit(Math.max(1, Math.min(200, Math.floor(limit))))
     .all()
     .map(serializeRun)
+}
+
+export const listBrokerRuns = (input: BrokerRunListQuery = {}) => {
+  adoptLegacyRuns()
+  const page = Math.max(1, Math.floor(Number(input.page ?? 1) || 1))
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number(input.pageSize ?? 20) || 20)))
+  const filters = []
+  const statuses: BrokerRunStatus[] = [
+    'idle',
+    'polling',
+    'participating',
+    'waiting',
+    'active',
+    'parsing',
+    'submitting',
+    'success',
+    'failed',
+    'not_selected',
+    'expired',
+    'submitted_success',
+    'submitted_failure',
+  ]
+  if (input.status && statuses.includes(input.status as BrokerRunStatus)) {
+    filters.push(eq(brokerRuns.status, input.status as BrokerRunStatus))
+  }
+  if (input.q?.trim()) {
+    const pattern = `%${input.q.trim()}%`
+    filters.push(
+      or(
+        like(brokerRuns.taskId, pattern),
+        like(brokerRuns.participationId, pattern),
+        like(brokerRuns.fileName, pattern),
+        like(brokerRuns.fileId, pattern),
+        like(brokerRuns.failureCode, pattern),
+        like(brokerRuns.message, pattern),
+      )!,
+    )
+  }
+  const where = filters.length > 0 ? and(...filters) : undefined
+  const [{ value: total }] = db.select({ value: sql<number>`COUNT(*)` }).from(brokerRuns).where(where).all()
+  const records = db
+    .select()
+    .from(brokerRuns)
+    .where(where)
+    .orderBy(desc(brokerRuns.updatedAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .all()
+    .map(serializeRun)
+
+  return {
+    records,
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  }
 }
 
 export const listBrokerRunEvents = (runId: string, limit = 100) =>
@@ -1209,7 +1276,7 @@ export const getBrokerRuntimeSnapshot = () => {
   const availableAccounts = listLocallyAvailableAccounts()
   const blockedAccounts = listBlockedAccounts()
   const active = activeRuns().map(serializeRun)
-  const recent = listBrokerRuns(50)
+  const recent = listRecentBrokerRuns(50)
   const state = runtimeStateFor(broker, availableAccounts.length)
 
   return {
