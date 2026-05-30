@@ -100,7 +100,7 @@ export const config: AppConfig = {
   maxAccountAttempts: Math.max(1, numberFromEnv('MAX_ACCOUNT_ATTEMPTS', 5)),
   showCookieAccountAddButton: booleanFromEnv('SHOW_COOKIE_ACCOUNT_ADD_BUTTON', false),
   linkCacheTtlSeconds: Math.max(60, numberFromEnv('LINK_CACHE_TTL_SECONDS', 60 * 60)),
-  tempCleanupIntervalSeconds: Math.max(60, numberFromEnv('TEMP_CLEANUP_INTERVAL_SECONDS', 10 * 60)),
+  tempCleanupIntervalSeconds: Math.max(60, numberFromEnv('TEMP_CLEANUP_INTERVAL_SECONDS', 60 * 60)),
   accountHealthIntervalSeconds: Math.max(60, numberFromEnv('ACCOUNT_HEALTH_INTERVAL_SECONDS', 2 * 60 * 60)),
   accountHealthLowSpaceBytes: Math.max(0, numberFromEnv('ACCOUNT_HEALTH_LOW_SPACE_BYTES', 50 * 1024 * 1024 * 1024)),
   accountHealthHistoryTtlDays: Math.max(1, numberFromEnv('ACCOUNT_HEALTH_HISTORY_TTL_DAYS', 7)),

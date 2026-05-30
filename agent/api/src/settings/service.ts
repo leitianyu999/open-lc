@@ -202,7 +202,7 @@ const definitions = {
     group: 'baidu',
     label: '中转清理间隔秒数',
     type: 'number',
-    defaultValue: String(10 * 60),
+    defaultValue: String(60 * 60),
     envName: agentEnvName('TEMP_CLEANUP_INTERVAL_SECONDS'),
     envValue: hasAgentEnv('TEMP_CLEANUP_INTERVAL_SECONDS') ? String(config.tempCleanupIntervalSeconds) : undefined,
     min: 60,
