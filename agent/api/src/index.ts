@@ -3,16 +3,22 @@ import { createAgentApp } from './app'
 import { initDb } from './db'
 import { startAgentBrokerRuntime } from './http/routes'
 import { runAccountHealthMaintenance } from './baidu/health'
-import { getAccountHealthSettings } from './settings/service'
+import { retryPendingDeletes } from './baidu/service'
+import { getAccountHealthSettings, getDownloadSettings } from './settings/service'
 
 initDb()
 startAgentBrokerRuntime()
 
 void runAccountHealthMaintenance()
+void retryPendingDeletes()
 
 setInterval(() => {
   void runAccountHealthMaintenance()
 }, getAccountHealthSettings().accountHealthIntervalSeconds * 1000)
+
+setInterval(() => {
+  void retryPendingDeletes()
+}, getDownloadSettings().tempCleanupIntervalSeconds * 1000)
 
 const app = createAgentApp()
 const server = Bun.serve({

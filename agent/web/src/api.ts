@@ -46,6 +46,7 @@ export const brokerRunApi = api.api.broker.runs[':id']
 export const updateCheckApi = api.api.system['update-check']
 export const localAccountExportCredentialsApi = api.api.local.accounts[':id']['export-credentials']
 export const workerV2VerifyApi = api.api.settings['link-proxy'].v2.verify
+export const tempFilesCleanupApi = api.api.maintenance['temp-files'].cleanup
 
 export type HealthResponse = (typeof api.health.$get.$infer)['data']
 export type LocalMeResponse = (typeof api.api.local.me.$get.$infer)['data']
@@ -90,6 +91,8 @@ export type AgentSettings = SettingsResponse['data']
 export type AgentSetting = AgentSettings['groups'][keyof AgentSettings['groups']][number]
 export type WorkerV2VerifyResponse = (typeof workerV2VerifyApi.$post.$infer)['data']
 export type WorkerV2VerifyResult = WorkerV2VerifyResponse['data']
+export type TempFilesCleanupResponse = (typeof tempFilesCleanupApi.$post.$infer)['data']
+export type TempFilesCleanupResult = TempFilesCleanupResponse['data']
 
 export const errorMessage = async (response: Response) => {
   const body = (await response.json().catch(() => null)) as ApiErrorResponse | null

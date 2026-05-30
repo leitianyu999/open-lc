@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { hasActiveParseJobs } from '../baidu/service'
+import { getTempFileCleanupSummary, hasActiveParseJobs, type TempFileCleanupSummary } from '../baidu/service'
 import { beginBrokerMaintenanceStop, endBrokerMaintenanceStop, getActiveBrokerExecutionCount, interruptActiveBrokerRuns } from '../broker/runtime'
 import { db, sqlite } from '../db'
 import {
@@ -32,6 +32,7 @@ type MaintenanceSummary = {
   appSettings: number
   activeParseJobs: number
   activeBrokerRuns: number
+  tempFileCleanup: TempFileCleanupSummary
 }
 
 const countSql = (tableName: string, where = '') => {
@@ -56,6 +57,7 @@ export const getMaintenanceSummary = (): MaintenanceSummary => ({
   appSettings: countSql('app_settings'),
   activeParseJobs: countSql('parse_jobs', "status IN ('queued', 'running')"),
   activeBrokerRuns: countSql('broker_runs', "status IN ('idle', 'polling', 'participating', 'waiting', 'active', 'parsing', 'submitting')"),
+  tempFileCleanup: getTempFileCleanupSummary(),
 })
 
 const assertNoActiveParseJobs = () => {

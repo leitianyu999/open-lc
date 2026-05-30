@@ -197,6 +197,17 @@ const definitions = {
     min: 60,
     integer: true,
   },
+  tempCleanupIntervalSeconds: {
+    key: 'temp_cleanup_interval_seconds',
+    group: 'baidu',
+    label: '中转清理间隔秒数',
+    type: 'number',
+    defaultValue: String(10 * 60),
+    envName: agentEnvName('TEMP_CLEANUP_INTERVAL_SECONDS'),
+    envValue: hasAgentEnv('TEMP_CLEANUP_INTERVAL_SECONDS') ? String(config.tempCleanupIntervalSeconds) : undefined,
+    min: 60,
+    integer: true,
+  },
   directDownloadUA: {
     key: 'baidu_direct_download_ua',
     group: 'download',
@@ -781,6 +792,7 @@ export const getDownloadSettings = () => ({
   transferDownloadUA: getSettingString('transferDownloadUA'),
   pcsUA: getSettingString('pcsUA'),
   linkCacheTtlSeconds: Math.max(60, getSettingNumber('linkCacheTtlSeconds')),
+  tempCleanupIntervalSeconds: Math.max(60, getSettingNumber('tempCleanupIntervalSeconds')),
 })
 
 export const getBaiduSettings = () => ({

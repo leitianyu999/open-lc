@@ -5,6 +5,7 @@ import {
   accountStatusEvents,
   accountTokenEvents,
   baiduAccounts,
+  baiduTempFiles,
   parseAttempts,
   parseRecords,
   type BaiduAccount,
@@ -616,6 +617,26 @@ export const setAccountOwnerStatus = (id: number, status: AccountStatus, reason 
 
 export const testAccountSign = async (account: BaiduAccount, shareid: number, uk: number) => client.getSign({ shareid, uk, cookie: account.cookie })
 
+const accountTempFileSummary = (accountId: number) => {
+  const rows = db
+    .select({
+      status: baiduTempFiles.status,
+      value: sql<number>`COUNT(*)`,
+    })
+    .from(baiduTempFiles)
+    .where(eq(baiduTempFiles.accountId, accountId))
+    .groupBy(baiduTempFiles.status)
+    .all()
+  const counts = Object.fromEntries(rows.map((row) => [row.status, Number(row.value ?? 0)]))
+  return {
+    active: counts.active ?? 0,
+    deletePending: counts.delete_pending ?? 0,
+    deleteFailed: counts.delete_failed ?? 0,
+    deleted: counts.deleted ?? 0,
+    unresolved: (counts.active ?? 0) + (counts.delete_pending ?? 0) + (counts.delete_failed ?? 0),
+  }
+}
+
 export const listOwnedAccounts = (owner: User) => {
   const items = db
     .select()
@@ -638,6 +659,7 @@ export const listOwnedAccounts = (owner: User) => {
         usage: {
           totalParses: Number(usage?.totalParses ?? 0),
         },
+        tempFiles: accountTempFileSummary(account.id),
       }
     })
   return items

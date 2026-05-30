@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import { db, lastInsertId } from '../db'
 import {
   baiduAccounts,
@@ -34,6 +34,8 @@ const client = new BaiduClient()
 const MIB = 1024 ** 2
 const directFirstMaxBytes = 50 * MIB
 const accountWaitRetryMs = 1000
+const autoTempDeleteRetryLimit = 2
+const manualTempDeleteRetryLimit = 5
 
 type FileListInput = {
   shareUrl: string
@@ -73,6 +75,47 @@ type ParseExecutionError = {
 type AccountWaitOptions = {
   deadline?: Date
   onWait?: (context: { waitMs: number }) => void
+}
+
+export type TempFileCleanupResult = {
+  attempted: number
+  deleted: number
+  failed: number
+  skipped: number
+  orphan: number
+  waitingForExpiry: number
+  firstError: string | null
+}
+
+export type TempFileCleanupSummary = {
+  active: number
+  deletePending: number
+  deleteFailed: number
+  deleted: number
+  orphan: number
+  recentOrphans: Array<{
+    id: number
+    tempDir: string
+    path: string
+    status: string
+    createdAt: string
+    errorMessage: string | null
+  }>
+  recentErrors: Array<{
+    id: number
+    tempDir: string
+    path: string
+    status: string
+    errorMessage: string | null
+    retryCount: number
+    updatedAt: string
+  }>
+  lastRun: {
+    startedAt: string
+    finishedAt: string
+    trigger: 'auto' | 'manual'
+    result: TempFileCleanupResult
+  } | null
 }
 
 type ShareDirFallbackInfo = {
@@ -631,11 +674,13 @@ const resolveOpenPlatformTransferUrl = async (params: {
 }
 
 const markTempDeleteFailure = (tempId: number, message: string, code?: string) => {
+  const current = db.select({ retryCount: baiduTempFiles.retryCount }).from(baiduTempFiles).where(eq(baiduTempFiles.id, tempId)).get()
+  const nextRetryCount = (current?.retryCount ?? 0) + 1
   db.update(baiduTempFiles)
     .set({
       status: code === 'TEMP_DELETE_NEEDS_VERIFY' ? 'delete_failed' : 'delete_pending',
       errorMessage: message.slice(0, 300),
-      retryCount: sql`${baiduTempFiles.retryCount} + 1`,
+      retryCount: nextRetryCount,
       updatedAt: new Date(),
     })
     .where(eq(baiduTempFiles.id, tempId))
@@ -870,6 +915,33 @@ const deleteTempPathsByAccessToken = async (params: {
   }
 }
 
+const deleteTempFileWithAccount = async (params: {
+  item: typeof baiduTempFiles.$inferSelect
+  account: BaiduAccount
+  bdstoken?: string
+}) => {
+  if (params.account.credentialSource === 'open_platform') {
+    await deleteTempPathsByAccessToken({
+      tempId: params.item.id,
+      tempDir: params.item.tempDir,
+      path: params.item.path,
+      account: params.account,
+      jobId: params.item.parseJobId,
+      recordId: params.item.parseRecordId,
+    })
+    return
+  }
+  await deleteTempPaths({
+    tempId: params.item.id,
+    tempDir: params.item.tempDir,
+    path: params.item.path,
+    account: params.account,
+    bdstoken: params.bdstoken,
+    jobId: params.item.parseJobId,
+    recordId: params.item.parseRecordId,
+  })
+}
+
 const scheduleOpenPlatformTempCleanup = (params: {
   tempId: number
   tempDir: string
@@ -901,25 +973,7 @@ const cleanupKnownTempFiles = async (account: BaiduAccount) => {
 
   for (const item of pending) {
     try {
-      if (account.credentialSource === 'open_platform') {
-        await deleteTempPathsByAccessToken({
-          tempId: item.id,
-          tempDir: item.tempDir,
-          path: item.path,
-          account,
-          jobId: item.parseJobId,
-          recordId: item.parseRecordId,
-        })
-      } else {
-        await deleteTempPaths({
-          tempId: item.id,
-          tempDir: item.tempDir,
-          path: item.path,
-          account,
-          jobId: item.parseJobId,
-          recordId: item.parseRecordId,
-        })
-      }
+      await deleteTempFileWithAccount({ item, account })
     } catch (error) {
       const info = appErrorInfo(error)
       markTempDeleteFailure(item.id, info.message, info.code)
@@ -2013,9 +2067,30 @@ export const reparseHistory = async (id: number, user?: User) => {
   )
 }
 
-export const retryPendingDeletes = async () => {
+const emptyTempCleanupResult = (): TempFileCleanupResult => ({
+  attempted: 0,
+  deleted: 0,
+  failed: 0,
+  skipped: 0,
+  orphan: 0,
+  waitingForExpiry: 0,
+  firstError: null,
+})
+
+let tempCleanupRunning = false
+let lastTempCleanupRun: TempFileCleanupSummary['lastRun'] = null
+
+const tempFileSnapshot = (item: typeof baiduTempFiles.$inferSelect) => ({
+  id: item.id,
+  tempDir: item.tempDir,
+  path: item.path,
+  status: item.status,
+  createdAt: item.createdAt.toISOString(),
+  errorMessage: item.errorMessage,
+})
+
+const markStaleActiveTempFilesPending = () => {
   const staleActiveCutoff = Date.now() - 30 * 60 * 1000
-  const openPlatformDeleteCutoff = Date.now() - getDownloadSettings().linkCacheTtlSeconds * 1000
   db.update(baiduTempFiles)
     .set({
       status: 'delete_pending',
@@ -2032,56 +2107,163 @@ export const retryPendingDeletes = async () => {
       ),
     )
     .run()
+}
 
-  const pending = db.select().from(baiduTempFiles).where(eq(baiduTempFiles.status, 'delete_pending')).limit(20).all()
-  for (const item of pending) {
-    if (item.accountId) {
-      const accountMeta = db
-        .select({
-          credentialSource: baiduAccounts.credentialSource,
-        })
-        .from(baiduAccounts)
-        .where(eq(baiduAccounts.id, item.accountId))
-        .get()
-      if (accountMeta?.credentialSource === 'open_platform' && item.createdAt.getTime() > openPlatformDeleteCutoff) {
+const selectTempCleanupCandidates = (includeFailed: boolean, limit: number) =>
+  db
+    .select()
+    .from(baiduTempFiles)
+    .where(includeFailed ? inArray(baiduTempFiles.status, ['delete_pending', 'delete_failed']) : eq(baiduTempFiles.status, 'delete_pending'))
+    .orderBy(asc(baiduTempFiles.updatedAt), asc(baiduTempFiles.id))
+    .limit(limit)
+    .all()
+
+const runTempFileCleanup = async (input: {
+  includeFailed: boolean
+  maxRetryCount: number
+  trigger: 'auto' | 'manual'
+  limit?: number
+}): Promise<TempFileCleanupResult> => {
+  if (tempCleanupRunning) return { ...emptyTempCleanupResult(), skipped: 1, firstError: '中转文件清理正在运行' }
+  tempCleanupRunning = true
+  const startedAt = new Date()
+  const result = emptyTempCleanupResult()
+  try {
+    markStaleActiveTempFilesPending()
+    const openPlatformDeleteCutoff = Date.now() - getDownloadSettings().linkCacheTtlSeconds * 1000
+    const pending = selectTempCleanupCandidates(input.includeFailed, input.limit ?? 20)
+    for (const item of pending) {
+      if (item.retryCount > input.maxRetryCount) {
+        result.skipped += 1
         continue
       }
-    }
-    const account = item.accountId ? acquireAccountById(item.accountId) : null
-    if (!account) continue
-    try {
-      const stillExists = await tempPathStillExists({
-        account,
-        tempDir: item.tempDir,
-        path: item.path,
-      })
-      if (!stillExists) {
-        markTempDeleted(item.id)
-        recordParseEvent({
-          type: 'temp_delete_success',
-          jobId: item.parseJobId,
-          recordId: item.parseRecordId,
-          accountId: account.id,
-          tempFileId: item.id,
-          status: 'success',
-          message: '转存临时路径已不存在，标记为已删除',
-          details: { tempDir: item.tempDir, path: item.path },
-        })
+      const accountMeta = item.accountId
+        ? db
+            .select({
+              credentialSource: baiduAccounts.credentialSource,
+            })
+            .from(baiduAccounts)
+            .where(eq(baiduAccounts.id, item.accountId))
+            .get()
+        : null
+      if (!item.accountId || !accountMeta) {
+        result.orphan += 1
+        result.skipped += 1
         continue
       }
-      await deleteTempPaths({
-        tempId: item.id,
-        tempDir: item.tempDir,
-        path: item.path,
-        account,
-        jobId: item.parseJobId,
-        recordId: item.parseRecordId,
-      })
-    } catch (error) {
-      const info = appErrorInfo(error)
-      markTempDeleteFailure(item.id, info.message, info.code)
-    } finally {
-      releaseAccount(account.id)
+      if (accountMeta.credentialSource === 'open_platform' && item.createdAt.getTime() > openPlatformDeleteCutoff) {
+        result.waitingForExpiry += 1
+        result.skipped += 1
+        continue
+      }
+      const account = acquireAccountById(item.accountId)
+      if (!account) {
+        result.skipped += 1
+        if (!result.firstError) result.firstError = `账号 #${item.accountId} 当前不可用，已跳过中转文件 #${item.id}`
+        continue
+      }
+      result.attempted += 1
+      try {
+        const stillExists = await tempPathStillExists({
+          account,
+          tempDir: item.tempDir,
+          path: item.path,
+        })
+        if (!stillExists) {
+          markTempDeleted(item.id)
+          result.deleted += 1
+          recordParseEvent({
+            type: 'temp_delete_success',
+            jobId: item.parseJobId,
+            recordId: item.parseRecordId,
+            accountId: account.id,
+            tempFileId: item.id,
+            status: 'success',
+            message: '转存临时路径已不存在，标记为已删除',
+            details: { tempDir: item.tempDir, path: item.path },
+          })
+          continue
+        }
+        await deleteTempFileWithAccount({ item, account })
+        result.deleted += 1
+      } catch (error) {
+        result.failed += 1
+        const info = appErrorInfo(error)
+        if (!result.firstError) result.firstError = info.message
+        markTempDeleteFailure(item.id, info.message, info.code)
+      } finally {
+        releaseAccount(account.id)
+      }
     }
+    return result
+  } finally {
+    tempCleanupRunning = false
+    lastTempCleanupRun = {
+      startedAt: startedAt.toISOString(),
+      finishedAt: new Date().toISOString(),
+      trigger: input.trigger,
+      result,
+    }
+  }
+}
+
+export const retryPendingDeletes = async () =>
+  runTempFileCleanup({
+    includeFailed: false,
+    maxRetryCount: autoTempDeleteRetryLimit,
+    trigger: 'auto',
+  })
+
+export const runManualTempFileCleanup = async () =>
+  runTempFileCleanup({
+    includeFailed: true,
+    maxRetryCount: manualTempDeleteRetryLimit,
+    trigger: 'manual',
+  })
+
+export const getTempFileCleanupSummary = (): TempFileCleanupSummary => {
+  const rows = db
+    .select({
+      status: baiduTempFiles.status,
+      value: sql<number>`COUNT(*)`,
+    })
+    .from(baiduTempFiles)
+    .groupBy(baiduTempFiles.status)
+    .all()
+  const counts = Object.fromEntries(rows.map((row) => [row.status, Number(row.value ?? 0)]))
+  const orphanWhere = and(
+    inArray(baiduTempFiles.status, ['active', 'delete_pending', 'delete_failed']),
+    sql`(${baiduTempFiles.accountId} IS NULL OR ${baiduTempFiles.accountId} NOT IN (SELECT id FROM baidu_accounts))`,
+  )
+  const [{ value: orphanCount }] = db.select({ value: sql<number>`COUNT(*)` }).from(baiduTempFiles).where(orphanWhere).all()
+  const recentOrphans = db
+    .select()
+    .from(baiduTempFiles)
+    .where(orphanWhere)
+    .orderBy(desc(baiduTempFiles.updatedAt), desc(baiduTempFiles.id))
+    .limit(5)
+    .all()
+    .map(tempFileSnapshot)
+  const recentErrors = db
+    .select()
+    .from(baiduTempFiles)
+    .where(inArray(baiduTempFiles.status, ['delete_pending', 'delete_failed']))
+    .orderBy(desc(baiduTempFiles.updatedAt), desc(baiduTempFiles.id))
+    .limit(5)
+    .all()
+    .map((item) => ({
+      ...tempFileSnapshot(item),
+      retryCount: item.retryCount,
+      updatedAt: item.updatedAt.toISOString(),
+    }))
+  return {
+    active: counts.active ?? 0,
+    deletePending: counts.delete_pending ?? 0,
+    deleteFailed: counts.delete_failed ?? 0,
+    deleted: counts.deleted ?? 0,
+    orphan: Number(orphanCount ?? 0),
+    recentOrphans,
+    recentErrors,
+    lastRun: lastTempCleanupRun,
   }
 }

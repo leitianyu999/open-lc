@@ -8,10 +8,12 @@ import {
   getShareFileList,
   getParseHistoryDetail,
   getParseJob,
+  getTempFileCleanupSummary,
   listParseHistory,
   parseLinks,
   recordParseEvent,
   reparseHistory,
+  runManualTempFileCleanup,
   submitParseJob,
 } from '../baidu/service'
 import {
@@ -367,6 +369,13 @@ export const typedRoutes = new Hono<AgentEnv>()
   .post('/api/maintenance/cleanup', zValidator('json', emptyJsonSchema), (c) => {
     const data = cleanupRuntimeData()
     return c.json({ code: 'OK', data })
+  })
+  .post('/api/maintenance/temp-files/cleanup', zValidator('json', emptyJsonSchema), async (c) => {
+    const data = await runManualTempFileCleanup()
+    return c.json({ code: 'OK', data })
+  })
+  .get('/api/maintenance/temp-files/summary', (c) => {
+    return c.json({ code: 'OK', data: getTempFileCleanupSummary() })
   })
   .post('/api/maintenance/factory-reset', zValidator('json', emptyJsonSchema), (c) => {
     const data = factoryResetAgentData()

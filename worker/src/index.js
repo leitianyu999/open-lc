@@ -20,7 +20,7 @@
 //
 // 可选环境变量：
 //   MAX_TOKEN_TTL_SECONDS   v2 token 最大有效期，默认 86400 秒
-//   ALLOWED_HOSTS           允许代理的上游 host，逗号分隔，默认 pcs.baidu.com
+//   ALLOWED_HOSTS           允许代理的上游 host，逗号分隔，默认 *
 //
 // v1：
 //   SHA-256(encryptionRoot) -> AES-GCM key
@@ -61,7 +61,6 @@ const V2_X25519_SALT = "open-lc:v2:x25519:salt";
 const V2_AES_SALT = "open-lc:v2:aes-gcm:salt";
 
 const DEFAULT_MAX_TOKEN_TTL_SECONDS = 86400;
-const DEFAULT_ALLOWED_HOSTS = ["pcs.baidu.com"];
 
 // X25519 base point，固定为 u = 9
 const X25519_BASE_POINT = new Uint8Array(32);
@@ -166,7 +165,6 @@ export default {
       return textError("invalid request", 400);
     }
 
-    // 限制允许代理的上游 host，避免 Worker 变成开放代理。
     if (!isAllowedUpstreamUrl(upstreamUrl, env)) {
       return textError("forbidden", 403);
     }
@@ -685,7 +683,7 @@ function encodeLittleEndian(num, length) {
  *
  * payload 至少需要：
  *   {
- *     "url": "https://pcs.baidu.com/...",
+ *     "url": "https://example.com/file",
  *     "exp": 1760000000
  *   }
  *
@@ -731,6 +729,10 @@ function isAllowedUpstreamUrl(upstreamUrl, env) {
   }
 
   const allowedHosts = getAllowedHosts(env);
+  if (allowedHosts === "*") {
+    return true;
+  }
+
   return allowedHosts.has(upstreamUrl.hostname);
 }
 
@@ -738,13 +740,17 @@ function isAllowedUpstreamUrl(upstreamUrl, env) {
  * 获取允许代理的 host。
  *
  * 默认：
- *   pcs.baidu.com
+ *   *
  *
  * 可通过环境变量配置：
- *   ALLOWED_HOSTS=pcs.baidu.com,example.com
+ *   ALLOWED_HOSTS=*
+ *   ALLOWED_HOSTS=example.com,download.example.com
  */
 function getAllowedHosts(env) {
-  const raw = env.ALLOWED_HOSTS || DEFAULT_ALLOWED_HOSTS.join(",");
+  const raw = String(env.ALLOWED_HOSTS || "*").trim();
+  if (!raw || raw === "*") {
+    return "*";
+  }
 
   return new Set(
     raw
@@ -910,7 +916,7 @@ function helpText(extraMessage = "", encryptionRoot = null) {
   lines.push("    [version_metadata]");
   lines.push('    binding = "CF_VERSION_METADATA"');
   lines.push("  MAX_TOKEN_TTL_SECONDS is optional. Default: 86400.");
-  lines.push("  ALLOWED_HOSTS is optional. Default: pcs.baidu.com.");
+  lines.push("  ALLOWED_HOSTS is optional. Default: *.");
   lines.push("");
   lines.push("Notes:");
   lines.push("  v1 uses legacy symmetric AES-GCM tokens.");
