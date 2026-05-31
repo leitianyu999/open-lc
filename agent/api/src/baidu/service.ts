@@ -17,7 +17,7 @@ import {
 } from '../db/schema'
 import { badRequest, forbidden, notFound, upstreamError, unknownErrorMessage } from '../lib/errors'
 import { createLinkProxyContext, createProxiedDownloadUrl, type LinkProxyContext } from '../lib/linkProxy'
-import { getAccountPolicy, getBaiduSettings, getDownloadSettings, getParseLimits } from '../settings/service'
+import { getAccountPolicy, getBaiduSettings, getDownloadSettings } from '../settings/service'
 import {
   acquireLocalAccount,
   acquireAccountById,
@@ -164,10 +164,6 @@ const ensureNumberArray = (value: unknown) => {
 
   const fsIds = value.map((item) => Number(item)).filter((item) => Number.isFinite(item))
   if (fsIds.length === 0) throw badRequest('BAD_FS_IDS', 'fsIds 至少包含一个有效 fs_id')
-  const limits = getParseLimits()
-  if (fsIds.length > limits.maxFilesPerRequest) {
-    throw badRequest('TOO_MANY_FILES', `单次最多解析 ${limits.maxFilesPerRequest} 个文件`)
-  }
   return fsIds
 }
 
@@ -183,12 +179,6 @@ const validateFiles = (files: ShareFile[], fsIds: number[]) => {
   const dir = typed.find((file) => file.is_dir)
   if (dir) {
     throw badRequest('FOLDER_NOT_SUPPORTED', `MVP 暂不支持文件夹，请进入目录选择文件: ${dir.server_filename}`)
-  }
-
-  const totalSize = typed.reduce((sum, file) => sum + file.size, 0)
-  const limits = getParseLimits()
-  if (limits.maxTotalSizeBytes > 0 && totalSize > limits.maxTotalSizeBytes) {
-    throw badRequest('TOTAL_SIZE_TOO_LARGE', `单次文件总大小超过限制: ${limits.maxTotalSizeBytes} bytes`)
   }
 
   return typed

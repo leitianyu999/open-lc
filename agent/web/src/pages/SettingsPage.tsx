@@ -20,6 +20,7 @@ import { Button, ConfirmDialog, CopyButton, MiddleEllipsis, Modal, Panel } from 
 import { defaultDownloaderForType, parseDownloaders, serializeDownloaders, type DownloaderConfig, type DownloaderType } from '../lib/downloaders'
 import { formatDateTime } from '../lib/format'
 import { errorAtom, clearParseExecutionAtom, pushNotificationAtom } from '../state'
+import esaWorkerSource from '../../../../scripts/esa.edge.js?raw'
 import workerSource from '../../../../scripts/worker.js?raw'
 
 type SettingsForm = Record<string, string>
@@ -38,12 +39,14 @@ type PendingRiskConsent = {
   type: RiskConsentType
   afterAccept: () => void
 } | null
-type WorkerHelpTab = 'quick' | 'manual'
+type WorkerHelpTab = 'quick' | 'manual' | 'esa'
 type WorkerConfigVersion = 'v1' | 'v2'
 type WorkerWizardStep = 'version' | 'form' | 'verify' | 'save'
 
 const workerDeployUrl = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/open-lc/tree/main/worker'
-const workerSourceUrl = 'https://github.com/LeUKi/open-lc/blob/main/worker/src/index.js'
+const workerSourceUrl = 'https://github.com/LeUKi/open-lc/blob/main/scripts/worker.js'
+const esaSourceUrl = 'https://github.com/LeUKi/open-lc/blob/main/scripts/esa.edge.js'
+const esaDeployUrl = 'https://esa.console.aliyun.com/edge/pages'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const desktopSwitchTimeoutMs = 15_000
 const desktopSwitchPollMs = 350
@@ -759,8 +762,9 @@ function WorkerHelpModal({
   onClose: () => void
 }) {
   const tabs: Array<{ key: WorkerHelpTab; label: string }> = [
-    { key: 'quick', label: '一键部署' },
-    { key: 'manual', label: '手动部署' },
+    { key: 'quick', label: 'Cloudflare 一键' },
+    { key: 'manual', label: 'Cloudflare 手动' },
+    { key: 'esa', label: '阿里云 ESA' },
   ]
   const current = tabs.some((tab) => tab.key === activeTab) ? activeTab : 'quick'
 
@@ -797,7 +801,7 @@ function WorkerHelpModal({
             </div>
           </div>
           <div className="grid gap-4 px-4 py-4 text-sm leading-6 text-slate-700">
-            {current === 'quick' ? (
+            {current === 'quick' && (
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                 <div className="min-w-0">
                   <div className="font-bold text-slate-900">一键部署到 Cloudflare</div>
@@ -816,14 +820,15 @@ function WorkerHelpModal({
                   一键部署
                 </a>
               </div>
-            ) : (
+            )}
+            {current === 'manual' && (
               <div className="grid gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="font-bold text-slate-900">手动部署到 Cloudflare Dashboard</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <a className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50" href={workerSourceUrl} rel="noreferrer" target="_blank">
                       <ExternalLink className="size-3.5" />
-                      index.js
+                      worker.js
                     </a>
                     <CopyButton value={workerSource} label="复制脚本" copiedLabel="已复制" size="sm" />
                   </div>
@@ -831,21 +836,48 @@ function WorkerHelpModal({
                 <ol className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                   <li>1. 打开 Cloudflare Dashboard，进入 Workers & Pages。</li>
                   <li>2. 创建 Worker，进入编辑器。</li>
-                  <li>3. 打开上方的 index.js 或点击复制脚本，将内容粘贴到 Worker 编辑器并部署。</li>
+                  <li>3. 打开上方的 worker.js 或点击复制脚本，将内容粘贴到 Worker 编辑器并部署。</li>
                   <li>4. 在 Settings - Variables and Secrets 中添加 Secret：URL_ENCRYPTION_KEY。</li>
                   <li>5. 回到 Agent，填写部署后的 Worker 地址。</li>
                 </ol>
               </div>
             )}
-            <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="font-bold text-slate-900">Secret 与加密方式</div>
-              <div>
-                需要给 Worker 设置 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>。使用 v2
-                时，Agent 只填 Worker 地址；使用 v1 时，Agent 还要填写同一个密钥。
+            {current === 'esa' && (
+              <div className="grid gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-bold text-slate-900">部署到阿里云 ESA</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50" href={esaDeployUrl} rel="noreferrer" target="_blank">
+                      <ExternalLink className="size-3.5" />
+                      ESA 控制台
+                    </a>
+                    <a className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-50" href={esaSourceUrl} rel="noreferrer" target="_blank">
+                      <ExternalLink className="size-3.5" />
+                      esa.edge.js
+                    </a>
+                    <CopyButton value={esaWorkerSource} label="复制脚本" copiedLabel="已复制" size="sm" />
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">ESA 对国内访问更友好，适合需要降低跨境访问波动的场景。</div>
+                <ol className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <li>1. 打开 ESA Edge Pages 控制台，创建边缘函数。</li>
+                  <li>2. 打开上方的 esa.edge.js 或点击复制脚本，将内容粘贴到编辑器。</li>
+                  <li>3. 在脚本顶部 CONFIG.URL_ENCRYPTION_KEY 改成高强度随机字符串。</li>
+                  <li>4. ALLOWED_HOSTS 默认是 *，通常无需修改。</li>
+                  <li>5. 部署后回到 Agent，填写 ESA 公开访问地址。</li>
+                </ol>
               </div>
-              <div>ALLOWED_HOSTS 默认是 *，通常无需配置；如需限制上游域名，可在 Worker Variables 中填写逗号分隔的 host。</div>
+            )}
+            <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="font-bold text-slate-900">密钥与加密方式</div>
+              <div>
+                Cloudflare 需要设置 Secret：<code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">URL_ENCRYPTION_KEY</code>；ESA
+                需要修改脚本顶部的 <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">CONFIG.URL_ENCRYPTION_KEY</code>。
+              </div>
+              <div>使用 v2 时，Agent 只填 Worker 地址；使用 v1 时，Agent 还要填写同一个密钥。</div>
+              <div>ALLOWED_HOSTS 默认是 *，通常无需配置；如需限制上游域名，可填写逗号分隔的 host。</div>
               <div className="rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-slate-600 ring-1 ring-slate-200">
-                Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
+                Cloudflare: Workers & Pages -&gt; 选择 Worker -&gt; Settings -&gt; Variables and Secrets -&gt; Add -&gt; Secret
               </div>
             </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">

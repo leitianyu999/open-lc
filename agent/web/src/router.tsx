@@ -4,7 +4,6 @@ import { HomePage } from './pages/HomePage'
 import { HistoryPage } from './pages/HistoryPage'
 import { MyAccountsPage } from './pages/MyAccountsPage'
 import { BrokerPage } from './pages/BrokerPage'
-import { BrokerRunDetailPage } from './pages/BrokerRunDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 const rootRoute = createRootRoute({
@@ -35,19 +34,13 @@ const brokerRoute = createRoute({
   component: BrokerPage,
 })
 
-const brokerRunDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/broker/runs/$runId',
-  component: BrokerRunDetailPage,
-})
-
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
   component: SettingsPage,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, localHistoryRoute, localAccountsRoute, brokerRoute, brokerRunDetailRoute, settingsRoute])
+const routeTree = rootRoute.addChildren([indexRoute, localHistoryRoute, localAccountsRoute, brokerRoute, settingsRoute])
 
 export const router = createRouter({
   routeTree,

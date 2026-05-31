@@ -14,6 +14,7 @@ COPY agent/electrobun agent/electrobun
 COPY agent/drizzle agent/drizzle
 COPY agent/drizzle.config.ts agent/drizzle.config.ts
 COPY scripts/worker.js scripts/worker.js
+COPY scripts/esa.edge.js scripts/esa.edge.js
 COPY scripts/encrypt-url.js scripts/encrypt-url.js
 RUN bun run build:agent-web
 

@@ -138,6 +138,13 @@ const localHistoryQuerySchema = z.object({
   pageSize: z.coerce.number().optional(),
 })
 
+const brokerHistoryQuerySchema = z.object({
+  status: z.string().optional(),
+  q: z.string().optional(),
+  page: z.coerce.number().optional(),
+  pageSize: z.coerce.number().optional(),
+})
+
 const localReparseSchema = z.object({}).optional()
 
 const localDiskBrowserQuerySchema = z.object({
@@ -715,8 +722,8 @@ export const typedRoutes = new Hono<AgentEnv>()
     const data = await brokerLoop()
     return c.json({ code: 'OK', data })
   })
-  .get('/api/broker/history', (c) => {
-    return c.json({ code: 'OK', data: listBrokerRuns() })
+  .get('/api/broker/history', zValidator('query', brokerHistoryQuerySchema), (c) => {
+    return c.json({ code: 'OK', data: listBrokerRuns(c.req.valid('query')) })
   })
   .get('/api/broker/runs/:id', (c) => {
     const data = getBrokerRunDetail(c.req.param('id'))

@@ -245,28 +245,6 @@ const definitions = {
     envValue: config.downloadersJson,
     allowEmpty: true,
   },
-  maxFilesPerRequest: {
-    key: 'max_files_per_request',
-    group: 'parse',
-    label: '单次最大文件数',
-    type: 'number',
-    defaultValue: '5',
-    envName: agentEnvName('MAX_FILES_PER_REQUEST'),
-    envValue: hasAgentEnv('MAX_FILES_PER_REQUEST') ? String(config.maxFilesPerRequest) : undefined,
-    min: 1,
-    integer: true,
-  },
-  maxTotalSizeBytes: {
-    key: 'max_total_size_bytes',
-    group: 'parse',
-    label: '单次最大总大小 bytes',
-    type: 'number',
-    defaultValue: '0',
-    envName: agentEnvName('MAX_TOTAL_SIZE_BYTES'),
-    envValue: hasAgentEnv('MAX_TOTAL_SIZE_BYTES') ? String(config.maxTotalSizeBytes) : undefined,
-    min: 0,
-    integer: true,
-  },
   requestTimeoutMs: {
     key: 'baidu_request_timeout_ms',
     group: 'parse',
@@ -780,8 +758,6 @@ export const getAccountPolicy = () => ({
 })
 
 export const getParseLimits = () => ({
-  maxFilesPerRequest: Math.max(1, getSettingNumber('maxFilesPerRequest')),
-  maxTotalSizeBytes: Math.max(0, getSettingNumber('maxTotalSizeBytes')),
   requestTimeoutMs: Math.max(1000, getSettingNumber('requestTimeoutMs')),
   transferDelayMs: Math.max(0, getSettingNumber('transferDelayMs')),
   parseConcurrency: Math.max(1, getSettingNumber('parseConcurrency')),
