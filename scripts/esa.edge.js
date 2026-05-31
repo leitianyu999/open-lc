@@ -642,6 +642,8 @@ function getMaxTokenTtlSeconds() {
  */
 function copyRequestHeadersForUpstream(request) {
   const headers = new Headers();
+  const userAgent = request.headers.get("User-Agent");
+  if (userAgent) headers.set("User-Agent", userAgent);
   const range = request.headers.get("Range");
   if (range) headers.set("Range", range);
   const ifRange = request.headers.get("If-Range");
